@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+coverage.xml
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# PySDL2 & DLL files (thường copy thủ công, không commit)
+SDL2.dll
+SDL2_image.dll
+SDL2_mixer.dll
+SDL2_ttf.dll
+libmpg123-0.dll
+libopusfile-0.dll
+libvorbisfile-3.dll
+libvorbis-0.dll
+libogg-0.dll
+
+# Cấu hình cá nhân & save game (không commit)
+config/settings.json
+save_data.json
+*.save
+*.sav
+
+# Asset cá nhân (nếu bạn tải về và chỉnh sửa)
+assets/sprites/*.png  # giữ nếu dùng asset mặc định, comment nếu muốn commit
+assets/sounds/*.wav
+assets/sounds/*.ogg
+assets/fonts/*.ttf
+
+# Logs & temp files
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Windows-specific
+ehthumbs.db
+*.stackdump
+
+# macOS-specific
+.AppleDouble
+.LSOverride
+
+# Project-specific temporary files
+*.tmp
+*.bak
+*.backup
