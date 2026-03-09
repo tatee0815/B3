@@ -3,7 +3,7 @@ State Win - Cứu được công chúa
 """
 
 import sdl2
-from game.constants import COLORS, SCREEN_WIDTH, SCREEN_HEIGHT
+from game.constants import SCREEN_WIDTH, SCREEN_HEIGHT, COLORS
 
 
 class WinState:
@@ -27,6 +27,16 @@ class WinState:
                 self.game.change_state("menu")
 
     def render(self, renderer):
-        renderer.clear(COLORS["black"])
-        # self.game.font.render(renderer, "CỨU ĐƯỢC CÔNG CHÚA!", (SCREEN_WIDTH//2, 180), align="center", color=COLORS["yellow"])
-        # self.game.font.render(renderer, "Cảm ơn bạn đã chơi!", (SCREEN_WIDTH//2, 300), align="center")
+        # Nền xanh dương thắng lợi
+        sdl2.SDL_SetRenderDrawColor(renderer, 60, 100, 220, 255)
+        sdl2.SDL_RenderClear(renderer)
+
+        # Text WIN (placeholder)
+        sdl2.SDL_SetRenderDrawColor(renderer, 255, 215, 0, 255)  # vàng
+        win_rect = sdl2.SDL_Rect(SCREEN_WIDTH//2 - 200, SCREEN_HEIGHT//2 - 100, 400, 200)
+        sdl2.SDL_RenderFillRect(renderer, win_rect)
+
+        # Hướng dẫn
+        sdl2.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255)
+        hint_rect = sdl2.SDL_Rect(SCREEN_WIDTH//2 - 200, SCREEN_HEIGHT - 100, 400, 40)
+        sdl2.SDL_RenderFillRect(renderer, hint_rect)
