@@ -32,26 +32,27 @@ class PauseState:
         pass
 
     def get_current_options(self):
-        # Lấy trực tiếp từ SettingState để đồng bộ
         setting = self.game.states["setting"]
         if self.current_sub_menu == self.MENU_MAIN:
             return self.main_options
         elif self.current_sub_menu == self.MENU_SETTINGS:
             return [f"Nhạc Nền: {setting.music_volume}%", f"Hiệu Ứng: {setting.sfx_volume}%", "Quay lại"]
         elif self.current_sub_menu == self.MENU_CONTROLS:
-            # Sử dụng key_names tiếng Việt từ SettingState cho đồng bộ
-            setting = self.game.states["setting"]
             controls = []
             for i in range(len(setting.key_names)):
                 name = setting.key_names[i]
+                # Sử dụng SDL_GetScancodeName để hiển thị đúng tên phím vật lý
                 scancode = KEY_BINDINGS_DEFAULT[setting.key_list[i]]
-                controls.append(f"{name}: {sdl2.SDL_GetScancodeName(scancode).decode()}")
-            return controls + ["Quay lại"]
+                val_str = sdl2.SDL_GetScancodeName(scancode).decode('utf-8')
+                controls.append(f"{name}: {val_str}")
+            # Thêm mục Mặc định và Quay lại
+            return controls + ["Mặc định", "Quay lại"]
         return []
 
     def handle_event(self, event):
         if event.type == sdl2.SDL_KEYDOWN:
             scancode = event.key.keysym.scancode
+            options = self.get_current_options()
             
             # Nếu đang chờ nhấn phím mới (Remap)
             if self.mode == "remap":
@@ -64,7 +65,6 @@ class PauseState:
                 return
 
             # Logic điều hướng Menu bình thường
-            options = self.get_current_options()
             if scancode == sdl2.SDL_SCANCODE_ESCAPE:
                 if self.current_sub_menu == self.MENU_MAIN:
                     self.game.change_state("playing")
@@ -86,6 +86,9 @@ class PauseState:
                 elif scancode == sdl2.SDL_SCANCODE_RIGHT: self.adjust_volume(5)
 
     def process_selection(self):
+        setting = self.game.states["setting"]
+        options = self.get_current_options()
+
         if self.current_sub_menu == self.MENU_MAIN:
             if self.selected_index == 0: self.game.change_state("playing")
             elif self.selected_index == 1: self.current_sub_menu = self.MENU_SETTINGS
@@ -94,10 +97,11 @@ class PauseState:
             self.selected_index = 0 # Reset trỏ khi vào menu con
             
         elif self.current_sub_menu == self.MENU_CONTROLS:
-            options = self.get_current_options()
             if self.selected_index == len(options) - 1: # Nút "Quay lại"
                 self.current_sub_menu = self.MENU_MAIN
                 self.selected_index = 2
+            elif self.selected_index == len(options) - 2: # Nút "Mặc định"
+                setting._reset_keys_only()
             else:
                 # Kích hoạt chế độ Remap ngay tại Pause
                 self.mode = "remap"
@@ -150,28 +154,34 @@ class PauseState:
         # 3. Vẽ Options theo phong cách Box của Menu
         options = self.get_current_options()
 
+        col_w = 380
+        gap_x = 40
+        gap_y = 80
+        start_x = (SCREEN_WIDTH - (col_w * 2 + gap_x)) // 2
+        start_y = 200
+
         if self.current_sub_menu == self.MENU_CONTROLS:
-            # CHẾ ĐỘ 2 CỘT CHO PHÍM BẤM (Giống SettingState)
-            start_y = 200
-            col_w = 380
-            gap_x = 40
-            gap_y = 85
-            start_x = (SCREEN_WIDTH - (col_w * 2 + gap_x)) // 2
-            
+            # CHẾ ĐỘ 2 CỘT CHO PHÍM BẤM
             for i, text in enumerate(options):
                 is_sel = (i == self.selected_index)
                 
-                # Nút "Quay lại" (phần tử cuối) căn giữa ở dưới
-                if i == len(options) - 1:
-                    bx, by, bw, bh = SCREEN_WIDTH // 2 - 150, start_y + 4 * gap_y, 300, 70
+                # Nút "Mặc định" và "Quay lại" (2 mục cuối cùng)
+                if i >= len(options) - 2:
+                    # Tính toán vị trí nút căn giữa
+                    bw, bh = 300, 70
+                    bx = (SCREEN_WIDTH - bw) // 2
+                    # Nút Mặc định (cách 1 đoạn), Nút Quay lại (cách thêm 1 đoạn)
+                    offset = 0 if i == len(options) - 2 else 85
+                    by = start_y + 4 * gap_y + offset
                 else:
-                    # Chia 2 cột
-                    col, row = (0 if i < 4 else 1), (i % 4)
+                    # Chia 2 cột cho các phím chức năng
+                    col = 0 if i < 4 else 1
+                    row = i % 4
                     bx = start_x + col * (col_w + gap_x)
                     by = start_y + row * gap_y
                     bw, bh = col_w, 70
 
-                # Vẽ Box lựa chọn (Phong cách MenuState)
+                # Logic vẽ khung (Rect) và chữ (Text)
                 if is_sel:
                     sdl2.SDL_SetRenderDrawColor(renderer, 255, 200, 0, 255)
                     text_color = (0, 0, 0)
@@ -183,14 +193,12 @@ class PauseState:
                 self.draw_text(text, bx + bw // 2, by + bh // 2, color=text_color)
 
         else:
-            # CHẾ ĐỘ 1 CỘT CHO MENU CHÍNH (Giống MenuState)
-            start_y = SCREEN_HEIGHT // 2 - 100
-            gap = 95
-            bw, bh = 450, 75
-            
+            # CHẾ ĐỘ 1 CỘT (MENU CHÍNH / CÀI ĐẶT ÂM THANH)
+            bw, bh = 440, 70
+            bx = (SCREEN_WIDTH - bw) // 2
             for i, text in enumerate(options):
                 is_sel = (i == self.selected_index)
-                bx, by = SCREEN_WIDTH // 2 - 225, start_y + i * gap
+                by = start_y + i * 85
 
                 if is_sel:
                     sdl2.SDL_SetRenderDrawColor(renderer, 255, 200, 0, 255)
