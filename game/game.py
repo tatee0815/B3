@@ -13,6 +13,7 @@ from game.constants import (
 from game.utils.camera import Camera
 from game.utils.save import save_game, load_game
 from game.states.menu import MenuState
+from game.states.setting import SettingState
 from game.states.playing import PlayingState
 from game.states.pause import PauseState
 from game.states.win import WinState
@@ -70,6 +71,7 @@ class Game:
 
     def _init_states(self):
         self.states["menu"] = MenuState(self)
+        self.states["setting"] = SettingState(self)
         self.states["playing"] = PlayingState(self)
         self.states["pause"] = PauseState(self)
         self.states["win"] = WinState(self)
@@ -86,41 +88,27 @@ class Game:
         self.current_state.on_enter(**kwargs)
 
     def handle_events(self):
-        events = sdl2.ext.get_events()
-        for event in events:
-            if event.type == sdl2.SDL_QUIT:
-                self.running = False
+            events = sdl2.ext.get_events()
+            for event in events:
+                if event.type == sdl2.SDL_QUIT:
+                    self.running = False
+                elif event.type == sdl2.SDL_WINDOWEVENT:
+                    if event.window.event == sdl2.SDL_WINDOWEVENT_RESIZED:
+                        # Cập nhật kích thước thực tế chính xác từ sự kiện
+                        self.current_width = event.window.data1
+                        self.current_height = event.window.data2
+                        
+                        # Tính toán scale chỉ để các state dùng nếu cần, 
+                        # không áp dụng vào SDL_RenderSetScale nữa
+                        self.scale_x = self.current_width / SCREEN_WIDTH
+                        self.scale_y = self.current_height / SCREEN_HEIGHT
+                        
+                        # Cập nhật camera theo kích thước thực
+                        self.camera.width = self.current_width
+                        self.camera.height = self.current_height
 
-            elif event.type == sdl2.SDL_KEYDOWN:
-                key = event.key.keysym.sym
-                if key == KEY_BINDINGS_DEFAULT["pause"]:
-                    if self.current_state.name == "playing":
-                        self.change_state("pause")
-                    elif self.current_state.name == "pause":
-                        self.change_state("playing")
-
-            elif event.type == sdl2.SDL_WINDOWEVENT:
-                if event.window.event == sdl2.SDL_WINDOWEVENT_RESIZED:
-                    new_w = event.window.data1
-                    new_h = event.window.data2
-
-                    self.current_width = new_w
-                    self.current_height = new_h
-
-                    # Scale chính cho game
-                    self.scale_x = new_w / SCREEN_WIDTH
-                    self.scale_y = new_h / SCREEN_HEIGHT
-
-                    # Scale HUD (giới hạn để chữ không quá to)
-                    min_scale = min(self.scale_x, self.scale_y)
-                    self.hud_scale = min(1.5, max(0.85, min_scale))
-
-                    # Cập nhật camera
-                    self.camera.width = new_w
-                    self.camera.height = new_h
-
-            if self.current_state:
-                self.current_state.handle_event(event)
+                if self.current_state:
+                    self.current_state.handle_event(event)
 
     def update(self, delta_time):
         self.delta_time = delta_time

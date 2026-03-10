@@ -8,8 +8,8 @@ import sdl2
 # -------------------------------
 # Cấu hình màn hình & hiệu suất
 # -------------------------------
-SCREEN_WIDTH          = 800
-SCREEN_HEIGHT         = 600
+SCREEN_WIDTH          = 1280
+SCREEN_HEIGHT         = 720
 FPS_TARGET            = 60
 FPS_FRAME_TIME_MS     = 1000 // FPS_TARGET   # ~16ms
 
@@ -60,13 +60,13 @@ TILEMAP_COLLISION_ID  = 1             # id tile solid trong tileset
 # Phím điều khiển mặc định
 # -------------------------------
 KEY_BINDINGS_DEFAULT = {
-    "left":     sdl2.SDLK_a,        # hoặc sdl2.SDLK_LEFT
-    "right":    sdl2.SDLK_d,
+    "left":     sdl2.SDLK_LEFT,        # hoặc sdl2.SDLK_LEFT
+    "right":    sdl2.SDLK_RIGHT,
     "jump":     sdl2.SDLK_z,        # Z nhảy
     "attack":   sdl2.SDLK_x,        # X chém kiếm
     "skill":    sdl2.SDLK_a,        # A skill tầm xa
     "dash":     sdl2.SDLK_c,        # C lướt / lăn né
-    "pause":    sdl2.SDLK_ESCAPE,
+    "pause":    sdl2.SDLK_p,
     "interact": sdl2.SDLK_e,        # tương tác NPC/checkpoint (nếu cần)
 }
 

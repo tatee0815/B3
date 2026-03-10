@@ -2,7 +2,6 @@
 import sdl2
 from sdl2 import sdlimage as sdlimage
 import sdl2.sdlttf as ttf
-import math
 import random
 from game.constants import SCREEN_WIDTH, SCREEN_HEIGHT
 
@@ -38,7 +37,6 @@ class MenuState:
 
         # Effects
         self.particles = []
-        self.blink_timer = 0.0
         self.particle_timer = 0.0
 
         self.option_textures = []
@@ -98,7 +96,6 @@ class MenuState:
             sdl2.SDL_FreeSurface(h_surf)
 
     def update(self, delta_time):
-        self.blink_timer += delta_time
         self.particle_timer += delta_time
         if self.particle_timer > 0.1:
             self.particle_timer = 0.0
@@ -126,9 +123,13 @@ class MenuState:
     def _handle_selection(self):
         choice = self.options[self.selected]
         if choice == "Bắt đầu chơi": self.game.change_state("playing")
+        elif choice == "Cài đặt":
+            self.game.change_state("setting")
         elif choice == "Thoát game": self.game.running = False
 
     def render(self, renderer):
+        sdl2.SDL_SetRenderDrawBlendMode(renderer, sdl2.SDL_BLENDMODE_NONE)
+
         # 1. Background (Fill toàn màn hình)
         if self.bg_texture:
             scale = max(SCREEN_WIDTH / self.bg_width, SCREEN_HEIGHT / self.bg_height)
@@ -144,6 +145,8 @@ class MenuState:
         # 3. Tiêu đề
         if self.title_tex:
             sdl2.SDL_RenderCopy(renderer, self.title_tex, None, self.title_rect)
+        
+        sdl2.SDL_SetRenderDrawBlendMode(renderer, sdl2.SDL_BLENDMODE_BLEND)
 
         # 4. Menu Options
         start_y = SCREEN_HEIGHT // 2 - 100
@@ -154,9 +157,7 @@ class MenuState:
             bw, bh = 450, 75
 
             if is_sel:
-                # Hiệu ứng nháy mượt mà
-                val = abs(math.sin(self.blink_timer * 8))
-                sdl2.SDL_SetRenderDrawColor(renderer, 255, 200, 0, int(150 + 105 * val))
+                sdl2.SDL_SetRenderDrawColor(renderer, 255, 200, 0, 255)
                 sdl2.SDL_RenderFillRect(renderer, sdl2.SDL_Rect(bx, by, bw, bh))
                 sdl2.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255)
                 sdl2.SDL_RenderDrawRect(renderer, sdl2.SDL_Rect(bx-2, by-2, bw+4, bh+4))
