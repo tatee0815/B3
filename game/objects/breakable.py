@@ -9,15 +9,15 @@ from game.entities.base import Entity
 class BreakableBox(Entity):
     """Thùng có thể phá (gỗ hoặc nổ)"""
 
-    def __init__(self, game, x, y, is_explosive=False):
+    def __init__(self, game, x, y, explosive=False):
         super().__init__(game, x, y, TILE_SIZE, TILE_SIZE)
-        self.is_explosive = is_explosive
-        self.hp = 1 if not is_explosive else 2  # thùng nổ chịu 2 hit
-        self.color = (180, 120, 60, 255) if not is_explosive else (200, 80, 40, 255)
+        self.explosive = explosive
+        self.hp = 1 if not explosive else 2  # thùng nổ chịu 2 hit
+        self.color = (180, 120, 60, 255) if not explosive else (200, 80, 40, 255)
         self.broken = False
 
         # Item có thể rơi ra khi vỡ (random)
-        self.possible_drops = ["coin", "heart", "mana"] if not is_explosive else ["coin", "mana"]
+        self.possible_drops = ["coin", "heart", "mana"] if not explosive else ["coin", "mana"]
 
     def take_damage(self, amount=1):
         self.hp -= amount

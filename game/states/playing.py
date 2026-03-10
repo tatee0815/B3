@@ -1,81 +1,66 @@
-"""
-State Playing - Trạng thái chơi chính (level, player, enemies, collision...)
-"""
-
-from game.constants import GRAVITY
-
+import sdl2
+import os
+from game.level.level import Level
 
 class PlayingState:
     def __init__(self, game):
         self.game = game
         self.name = "playing"
-
         self.player = None
-        self.level = None
-        self.hud = self.game.hud
+        self.level = Level(self.game) # Khởi tạo instance Level
 
     def on_enter(self, **kwargs):
-        print("Bắt đầu chơi level:", self.game.player_progress["current_level"])
+        level_name = kwargs.get("level", self.game.player_progress.get("current_level", "level1_forest"))
+        print(f"[PlayingState] Nạp: {level_name}")
 
-        # Load level từ json (sẽ implement loader sau)
-        from game.level.loader import load_level_from_json
-        level_name = kwargs.get("level", self.game.player_progress["current_level"])
-        self.level = load_level_from_json(level_name, self.game)
+        if self.level.load_from_json(level_name):
+            from game.entities.player import Player
+            self.player = Player(self.game)
 
-        # Khởi tạo player
-        from game.entities.player import Player
-        self.player = Player(self.game)
+            # Đặt player tại vị trí bắt đầu của map
+            spawn_pos = self.level.get_spawn_position()
+            self.player.rect.x = spawn_pos[0]
+            self.player.rect.y = spawn_pos[1]
 
-        # Spawn tại vị trí checkpoint hoặc start
-        spawn_pos = self.level.get_spawn_position()
-        self.player.rect.x = spawn_pos[0]
-        self.player.rect.y = spawn_pos[1]
-        self.player.hp = 3  # ví dụ
-
-        self.game.camera.reset()
-
-    def on_exit(self):
-        print("Thoát playing state")
-
-    def handle_event(self, event):
-        if self.player:
-            self.player.handle_input(event)
+            self.level.spawn_all_entities(self.game)
+            
+            if hasattr(self.game, 'camera'):
+                self.game.camera.reset()
+        else:
+            print("Lỗi nạp dữ liệu màn chơi!")
 
     def update(self, delta_time):
         if not self.player or not self.level:
             return
 
-        # Update player
+        # Player update xử lý di chuyển và va chạm thông qua level.handle_collision
         self.player.update(delta_time, self.level)
+        
+        # Camera bám theo player
+        if hasattr(self.game, 'camera'):
+            self.game.camera.update(self.player)
 
-        # Update entities khác
-        for entity in self.level.entities:
-            if hasattr(entity, "update"):
-                entity.update(delta_time)
-
-        # Update platforms di chuyển (nếu có)
-        for plat in self.level.platforms:
-            if hasattr(plat, "update"):
-                plat.update(delta_time, self.level)
-
-        # Check thắng level
         if self.level.check_win(self.player):
             self.game.change_state("win")
 
-        # Check chết (đã xử lý trong player hoặc level)
-        # ...
-
     def render(self, renderer):
-        # Low-level: vẽ nền level (ví dụ màu xanh lá cho rừng)
-        sdl2.SDL_SetRenderDrawColor(renderer, 80, 140, 60, 255)
+        # Clear screen với màu nền của level
+        sdl2.SDL_SetRenderDrawColor(renderer, *self.level.bg_color)
         sdl2.SDL_RenderClear(renderer)
-
-        # Render level (tiles, platforms, entities)
+        
         if self.level:
             self.level.render(renderer, self.game.camera)
-
-        # Render player
         if self.player:
             self.player.render(renderer, self.game.camera)
 
-        # HUD sẽ được render ở cấp Game sau state
+    def handle_event(self, event):
+        if event.type == sdl2.SDL_KEYDOWN:
+            if event.key.keysym.scancode == sdl2.SDL_SCANCODE_ESCAPE:
+                self.game.change_state("pause")
+                return
+
+        if self.player:
+            self.player.handle_input(event)
+
+    def on_exit(self):
+        print("Thoát PlayingState")

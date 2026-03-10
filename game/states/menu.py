@@ -23,12 +23,7 @@ class MenuState:
         self.selected = 0
 
         # Assets & Textures
-        self.font = None
-        self.title_font = None
         self.bg_texture = None
-        self.bg_width = 0
-        self.bg_height = 0
-
         self.title_tex = None
         self.title_rect = sdl2.SDL_Rect(0, 0, 0, 0)
         self.opt_textures = []
@@ -38,62 +33,60 @@ class MenuState:
         # Effects
         self.particles = []
         self.particle_timer = 0.0
+        self.assets_loaded = False
 
-        self.option_textures = []
-
-        self._init_assets()
+    def on_enter(self, **kwargs):
+        self.selected = 0
+        self.particles.clear()
+        if not self.assets_loaded:
+            self._init_assets()
+            self.assets_loaded = True
 
     def _init_assets(self):
         """Khởi tạo toàn bộ tài nguyên, dọn dẹp rác bộ nhớ"""
-        if ttf.TTF_WasInit() == 0:
-            ttf.TTF_Init()
+        renderer = self.game.renderer
 
-        # 1. Load Fonts
-        font_path = "assets/fonts/UTM-Netmuc-KT.ttf"
-        self.font = ttf.TTF_OpenFont(font_path.encode(), 30)
-        self.title_font = ttf.TTF_OpenFont(font_path.encode(), 70)
-
-        # 2. Load Background
+        # 1. Load Background
         bg_path = "assets/backgrounds/menu_bg.png"
         surf = sdlimage.IMG_Load(bg_path.encode('utf-8'))
         if surf:
-            self.bg_texture = sdl2.SDL_CreateTextureFromSurface(self.game.renderer, surf)
+            self.bg_texture = sdl2.SDL_CreateTextureFromSurface(renderer, surf)
             self.bg_width = surf.contents.w
             self.bg_height = surf.contents.h
             sdl2.SDL_FreeSurface(surf)
-
-        renderer = self.game.renderer
         
-        # 3. Render Tiêu đề (Chống tràn)
-        t_surf = ttf.TTF_RenderUTF8_Blended(self.title_font, "HIỆP SĨ KIẾM HUYỀN THOẠI".encode('utf-8'), sdl2.SDL_Color(255, 215, 0))
-        if t_surf:
-            self.title_tex = sdl2.SDL_CreateTextureFromSurface(renderer, t_surf)
-            tw, th = t_surf.contents.w, t_surf.contents.h
-            max_w = int(SCREEN_WIDTH * 0.8)
-            if tw > max_w:
-                th = int(th * (max_w / tw))
-                tw = max_w
-            self.title_rect = sdl2.SDL_Rect(SCREEN_WIDTH//2 - tw//2, 60, tw, th)
-            sdl2.SDL_FreeSurface(t_surf)
+        # 2. Render Tiêu đề (Chống tràn)
+        if hasattr(self.game, 'title_font') and self.game.title_font:
+            t_surf = ttf.TTF_RenderUTF8_Blended(self.game.title_font, "HIỆP SĨ KIẾM HUYỀN THOẠI".encode('utf-8'), sdl2.SDL_Color(255, 215, 0))
+            if t_surf:
+                self.title_tex = sdl2.SDL_CreateTextureFromSurface(renderer, t_surf)
+                tw, th = t_surf.contents.w, t_surf.contents.h
+                max_w = int(SCREEN_WIDTH * 0.8)
+                if tw > max_w:
+                    th = int(th * (max_w / tw))
+                    tw = max_w
+                self.title_rect = sdl2.SDL_Rect(SCREEN_WIDTH//2 - tw//2, 60, tw, th)
+                sdl2.SDL_FreeSurface(t_surf)
 
-        # 4. Render Options
+        # 3. Render Options
         self.opt_textures = []
-        for opt in self.options:
-            o_surf = ttf.TTF_RenderUTF8_Blended(self.font, opt.encode('utf-8'), sdl2.SDL_Color(255, 255, 255))
-            if o_surf:
-                tex = sdl2.SDL_CreateTextureFromSurface(self.game.renderer, o_surf)
-                self.opt_textures.append((tex, o_surf.contents.w, o_surf.contents.h))
-                sdl2.SDL_FreeSurface(o_surf)
+        if hasattr(self.game, 'font') and self.game.font:
+            for opt in self.options:
+                o_surf = ttf.TTF_RenderUTF8_Blended(self.game.font, opt.encode('utf-8'), sdl2.SDL_Color(255, 255, 255))
+                if o_surf:
+                    tex = sdl2.SDL_CreateTextureFromSurface(self.game.renderer, o_surf)
+                    self.opt_textures.append((tex, o_surf.contents.w, o_surf.contents.h))
+                    sdl2.SDL_FreeSurface(o_surf)
 
-        # 5. Render Hint (Sửa lỗi chữ bị dồn ở góc)
-        h_str = "UP / DOWN : Chọn  |  Z : Xác nhận  |  ESC : Thoát"
-        h_surf = ttf.TTF_RenderUTF8_Blended(self.font, h_str.encode('utf-8'), sdl2.SDL_Color(220, 220, 220))
-        if h_surf:
-            self.hint_tex = sdl2.SDL_CreateTextureFromSurface(renderer, h_surf)
-            hw, hh = h_surf.contents.w, h_surf.contents.h
-            # Căn giữa chính xác ở cạnh dưới
-            self.hint_rect = sdl2.SDL_Rect(SCREEN_WIDTH//2 - hw//2, SCREEN_HEIGHT - 65, hw, hh)
-            sdl2.SDL_FreeSurface(h_surf)
+            # 5. Render Hint (Sửa lỗi chữ bị dồn ở góc)
+            h_str = "UP / DOWN : Chọn  |  Z : Xác nhận  |  ESC : Thoát"
+            h_surf = ttf.TTF_RenderUTF8_Blended(self.game.font, h_str.encode('utf-8'), sdl2.SDL_Color(220, 220, 220))
+            if h_surf:
+                self.hint_tex = sdl2.SDL_CreateTextureFromSurface(renderer, h_surf)
+                hw, hh = h_surf.contents.w, h_surf.contents.h
+                # Căn giữa chính xác ở cạnh dưới
+                self.hint_rect = sdl2.SDL_Rect(SCREEN_WIDTH//2 - hw//2, SCREEN_HEIGHT - 65, hw, hh)
+                sdl2.SDL_FreeSurface(h_surf)
 
     def update(self, delta_time):
         self.particle_timer += delta_time
@@ -112,13 +105,21 @@ class MenuState:
 
     def handle_event(self, event):
         if event.type == sdl2.SDL_KEYDOWN:
-            key = event.key.keysym.sym
-            if key in (sdl2.SDL_SCANCODE_UP, sdl2.SDLK_w, sdl2.SDLK_UP):
+            scancode = event.key.keysym.scancode
+            
+            # Chỉ nhận phím mũi tên Lên/Xuống
+            if scancode == sdl2.SDL_SCANCODE_UP:
                 self.selected = (self.selected - 1) % len(self.options)
-            elif key in (sdl2.SDL_SCANCODE_DOWN, sdl2.SDLK_s, sdl2.SDLK_DOWN):
+            elif scancode == sdl2.SDL_SCANCODE_DOWN:
                 self.selected = (self.selected + 1) % len(self.options)
-            elif key in (sdl2.SDLK_RETURN, sdl2.SDLK_z, sdl2.SDLK_SPACE):
+            
+            # Phím xác nhận (Z, Enter hoặc Space)
+            elif scancode in (sdl2.SDL_SCANCODE_RETURN, sdl2.SDL_SCANCODE_Z, sdl2.SDL_SCANCODE_SPACE):
                 self._handle_selection()
+            
+            # Phím thoát nhanh
+            elif scancode == sdl2.SDL_SCANCODE_ESCAPE:
+                self.game.running = False
 
     def _handle_selection(self):
         choice = self.options[self.selected]
@@ -171,9 +172,5 @@ class MenuState:
         # 5. Hint (Vẽ duy nhất một lần ở trung tâm dưới)
         if self.hint_tex:
             sdl2.SDL_RenderCopy(renderer, self.hint_tex, None, self.hint_rect)
-
-    def on_enter(self, **kwargs):
-        self.selected = 0
-        self.particles.clear()
 
     def on_exit(self): pass

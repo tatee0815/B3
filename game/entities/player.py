@@ -11,7 +11,7 @@ from .projectile import Projectile
 
 class Player(Entity):
     def __init__(self, game):
-        super().__init__(game, x=100, y=400, w=32, h=48)  # cao hơn tí
+        super().__init__(game, x=100, y=400, w=24, h=48)  # cao hơn tí
         
         self.hp = PLAYER_MAX_HP
         self.mana = 50
@@ -28,57 +28,71 @@ class Player(Entity):
         self.state = "idle"  # idle, run, jump, attack...
 
     def handle_input(self, event):
+        # 1. Xử lý khi nhấn phím xuống (KEYDOWN)
         if event.type == sdl2.SDL_KEYDOWN:
-            key = event.key.keysym.sym
+            scancode = event.key.keysym.scancode
             
-            if key == KEY_BINDINGS_DEFAULT["jump"]:
+            # Di chuyển sang trái
+            if scancode == sdl2.SDL_SCANCODE_LEFT :
+                self.vel_x = -PLAYER_SPEED
+                self.facing_right = False
+            # Di chuyển sang phải
+            elif scancode == sdl2.SDL_SCANCODE_RIGHT:
+                self.vel_x = PLAYER_SPEED
+                self.facing_right = True
+            
+            # Nhảy
+            elif scancode == KEY_BINDINGS_DEFAULT["jump"] or scancode == sdl2.SDL_SCANCODE_SPACE:
                 if self.on_ground:
                     self.vel_y = JUMP_FORCE
-                    self.jumped_once = True
                     self.on_ground = False
+                    self.jumped_once = True
                 elif self.can_double_jump and self.jumped_once:
                     self.vel_y = DOUBLE_JUMP_FORCE
                     self.jumped_once = False
             
-            elif key == KEY_BINDINGS_DEFAULT["attack"]:
+            # Tấn công
+            elif scancode == KEY_BINDINGS_DEFAULT["attack"]:
                 self.melee_attack()
-            
-            elif key == KEY_BINDINGS_DEFAULT["skill"] and self.mana >= SKILL_A_COST:
-                self.skill_a_fire()
-                self.mana -= SKILL_A_COST
-            
+
+        # 2. Xử lý khi thả phím ra (KEYUP) - Quan trọng để hết bị khựng
         elif event.type == sdl2.SDL_KEYUP:
-            # Dừng di chuyển ngang khi thả phím
-            pass
+            scancode = event.key.keysym.scancode
+            
+            # Nếu đang đi trái mà thả phím trái/A ra thì dừng vel_x
+            if (scancode == sdl2.SDL_SCANCODE_LEFT ) and self.vel_x < 0:
+                self.vel_x = 0
+            # Nếu đang đi phải mà thả phím phải/D ra thì dừng vel_x
+            elif (scancode == sdl2.SDL_SCANCODE_RIGHT ) and self.vel_x > 0:
+                self.vel_x = 0
 
     def update(self, delta_time, level):
-        keys = sdl2.SDL_GetKeyboardState(None)
+        # KHÔNG CÒN GetKeyboardState ở đây nữa
         
-        # Di chuyển ngang
-        move = 0
-        if keys[KEY_BINDINGS_DEFAULT["left"] & 0xFF]:
-            move = -PLAYER_SPEED
-            self.facing_right = False
-        if keys[KEY_BINDINGS_DEFAULT["right"] & 0xFF]:
-            move = PLAYER_SPEED
-            self.facing_right = True
-        
-        self.vel_x = move
-        
+        # Cập nhật vị trí dựa trên vel_x, vel_y (đã được set trong handle_input)
         super().update(delta_time, level)
         
-        # Collision với level (sẽ implement chi tiết trong level.py)
-        level.resolve_player_collision(self)
+        # Xử lý va chạm
+        level.handle_collision(self)
         
-        # Regen mana thụ động nhẹ
+        # Mana hồi phục theo thời gian
         self.mana = min(MANA_MAX, self.mana + 5 * delta_time)
 
     def melee_attack(self):
-        # Tạm thời: gây damage cho enemy trong phạm vi gần
-        damage = 20  # sau này nâng cấp
-        for e in self.game.states["playing"].level.entities:
-            if isinstance(e, Enemy) and self.collides_with(e):
-                e.take_damage(damage)
+        damage = 20
+        # Lấy danh sách quái từ level
+        entities = self.game.states["playing"].level.entities
+        
+        for e in entities:
+            # Kiểm tra nếu e là quái vật và có va chạm với đòn đánh của Player
+            # (Bạn có thể tạo một Rect tấn công rộng hơn rect của player tí)
+            if e != self and self.collides_with(e):
+                if hasattr(e, "take_damage"):
+                    e.take_damage(damage)
+
+    def collides_with(self, other):
+        """Hàm hỗ trợ kiểm tra va chạm giữa 2 SDL_Rect"""
+        return sdl2.SDL_HasIntersection(self.rect, other.rect)
 
     def skill_a_fire(self):
         # Bắn projectile

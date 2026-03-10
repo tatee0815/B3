@@ -27,13 +27,6 @@ class SettingState:
         self.key_list = ["left", "right", "jump", "attack", "skill", "dash", "pause"]
 
         self._load_settings()
-        self._init_assets()
-
-    def _init_assets(self):
-        font_path = "assets/fonts/UTM-Netmuc-KT.ttf"
-        # Đồng bộ cỡ chữ với menu (30 cho nội dung, 70 cho tiêu đề)
-        self.font = ttf.TTF_OpenFont(font_path.encode(), 30)
-        self.title_font = ttf.TTF_OpenFont(font_path.encode(), 70)
 
     def _load_settings(self):
         path = "config/settings.json"
@@ -63,101 +56,102 @@ class SettingState:
 
     def handle_event(self, event):
         if event.type != sdl2.SDL_KEYDOWN: return
-        key = event.key.keysym.sym
+        
+        # Chuyển sang dùng scancode để đồng bộ và ổn định hơn
+        scancode = event.key.keysym.scancode
 
-        # TRẠNG THÁI 3: Đang chờ nhấn phím mới để gán
+        # 1. TRẠNG THÁI "remap": Đang chờ nhấn phím mới để gán
         if self.mode == "remap":
-            if key != sdl2.SDLK_ESCAPE:
-                KEY_BINDINGS_DEFAULT[self.key_list[self.remap_index]] = key
+            if scancode != sdl2.SDL_SCANCODE_ESCAPE:
+                # Gán phím mới dựa trên scancode
+                from game.constants import KEY_BINDINGS_DEFAULT
+                KEY_BINDINGS_DEFAULT[self.key_list[self.remap_index]] = scancode
                 self._save_settings()
             self.mode = "sub_menu" # Xong thì quay lại danh sách phím
             return
 
-        # ĐIỀU HƯỚNG CHUNG (Dùng cho cả Main và Sub_menu)
+        # 2. ĐIỀU HƯỚNG TRONG "sub_menu" (Tùy chỉnh phím)
         if self.mode == "sub_menu":
-            if key in (sdl2.SDLK_UP, sdl2.SDLK_w):
-                if self.selected == 7: # Từ Mặc định lên lại
-                    self.selected = 6  # Lên phím Chém (hoặc 6 nếu muốn lên cột 2)
+            # Chỉ nhận phím mũi tên Lên/Xuống
+            if scancode == sdl2.SDL_SCANCODE_UP:
+                if self.selected == 7: # Từ nút "Mặc định" lên lại
+                    self.selected = 6  # Lên phím cuối cùng của cột 2 (Tạm dừng)
                 else:
                     self.selected = (self.selected - 1) % 8
                     
-            elif key in (sdl2.SDLK_DOWN, sdl2.SDLK_s):
-                # LOGIC YÊU CẦU: Từ phím Chém (index 3) bấm DOWN xuống Mặc định (index 7)
-                if self.selected == 3: 
-                    self.selected = 7
-                # Nếu từ phím cuối cột 2 (index 6 - Tạm dừng) bấm DOWN cũng xuống Mặc định
-                elif self.selected == 6:
+            elif scancode == sdl2.SDL_SCANCODE_DOWN:
+                # Từ phím Chém (index 3) hoặc Tạm dừng (index 6) xuống Mặc định (index 7)
+                if self.selected in (3, 6): 
                     self.selected = 7
                 elif self.selected == 7:
                     self.selected = 0 # Từ Mặc định về đầu danh sách
                 else:
                     self.selected = (self.selected + 1) % 8
 
-            elif key in (sdl2.SDLK_LEFT, sdl2.SDLK_a):
+            # Chỉ nhận phím mũi tên Trái/Phải để nhảy cột
+            elif scancode == sdl2.SDL_SCANCODE_LEFT:
                 if 4 <= self.selected <= 6: # Đang ở cột 2
                     self.selected -= 4      # Nhảy sang cột 1
-                elif self.selected == 7:    # Đang ở Mặc định
-                    self.selected = 3       # Nhảy lên phím cuối cột 1
+                elif self.selected == 7:    # Đang ở nút Mặc định
+                    self.selected = 3       # Nhảy lên phím cuối cột 1 (Chém)
                     
-            elif key in (sdl2.SDLK_RIGHT, sdl2.SDLK_d):
-                if 0 <= self.selected <= 2: # Đang ở cột 1 (trừ phím Chém vì đối diện nó là trống)
+            elif scancode == sdl2.SDL_SCANCODE_RIGHT:
+                if 0 <= self.selected <= 2: # Đang ở cột 1
                     self.selected += 4      # Nhảy sang cột 2
-                elif self.selected == 7:    # Đang ở Mặc định
-                    self.selected = 6       # Nhảy lên phím cuối cột 2
-        else:
-            # Điều hướng menu chính (Dọc)
-            if key in (sdl2.SDLK_UP, sdl2.SDLK_w):
-                self.selected = (self.selected - 1) % len(self.options)
-            elif key in (sdl2.SDLK_DOWN, sdl2.SDLK_s):
-                self.selected = (self.selected + 1) % len(self.options)
+                elif self.selected == 7:    # Đang ở nút Mặc định
+                    self.selected = 6       # Nhảy lên phím cuối cột 2 (Tạm dừng)
 
-        # XỬ LÝ CHỌN (ENTER / Z)
-        if key in (sdl2.SDLK_RETURN, sdl2.SDLK_z, sdl2.SDLK_SPACE):
+        # 3. ĐIỀU HƯỚNG TRONG "main" (Menu Cài đặt chính)
+        else:
+            if scancode == sdl2.SDL_SCANCODE_UP:
+                self.selected = (self.selected - 1) % len(self.options)
+            elif scancode == sdl2.SDL_SCANCODE_DOWN:
+                self.selected = (self.selected + 1) % len(self.options)
+            
+            # Điều chỉnh âm lượng (Chỉ dùng mũi tên Trái/Phải)
+            elif scancode == sdl2.SDL_SCANCODE_LEFT:
+                self._adjust_value(-5)
+            elif scancode == sdl2.SDL_SCANCODE_RIGHT:
+                self._adjust_value(5)
+
+        # 4. XỬ LÝ CHỌN (Xác nhận dùng Enter, Z hoặc Space)
+        if scancode in (sdl2.SDL_SCANCODE_RETURN, sdl2.SDL_SCANCODE_Z, sdl2.SDL_SCANCODE_SPACE):
             if self.mode == "main":
-                if self.selected == 2: # Chọn Tùy chỉnh phím
+                if self.selected == 2: # Chọn mục "Tùy chỉnh phím"
                     self.mode = "sub_menu"
-                    self.remap_index = 0
-                    self.selected = 0 # Reset vị trí chọn cho danh sách phím
-                elif self.selected == 3: # Quay lại
+                    self.selected = 0 
+                elif self.selected == 3: # Nút "Quay lại" trong menu chính
                     self.game.change_state("menu")
             elif self.mode == "sub_menu":
-                if self.selected == 7:
+                if self.selected == 7: # Chọn nút "Mặc định"
                     self._reset_keys_only()
                 else:
                     self.remap_index = self.selected
                     self.mode = "remap"
 
-        # XỬ LÝ QUAY LẠI (ESC)
-        elif key == sdl2.SDLK_ESCAPE:
+        # 5. XỬ LÝ QUAY LẠI (Phím ESC)
+        elif scancode == sdl2.SDL_SCANCODE_ESCAPE:
             if self.mode == "sub_menu":
                 self.mode = "main"
-                self.selected = 3 # Quay lại đúng mục Tùy chỉnh phím
+                self.selected = 2 # Quay về đúng mục "Tùy chỉnh phím" ở menu chính
             else:
                 self.game.change_state("menu")
 
-        # THAY ĐỔI GIÁ TRỊ (Chỉ ở Main)
-        if self.mode == "main":
-            if key in (sdl2.SDLK_LEFT, sdl2.SDLK_a):
-                self._adjust_value(-5)
-            elif key in (sdl2.SDLK_RIGHT, sdl2.SDLK_d):
-                self._adjust_value(5)
-
     def _reset_keys_only(self):
-        # Định nghĩa lại các phím gốc
+        # Định nghĩa lại các phím gốc bằng SCANCODE
         defaults = {
-            "left": sdl2.SDLK_LEFT,
-            "right": sdl2.SDLK_RIGHT,
-            "jump": sdl2.SDLK_z,
-            "attack": sdl2.SDLK_x,
-            "skill": sdl2.SDLK_a,
-            "dash": sdl2.SDLK_c,
-            "pause": sdl2.SDLK_p
+            "left": sdl2.SDL_SCANCODE_LEFT,
+            "right": sdl2.SDL_SCANCODE_RIGHT,
+            "jump": sdl2.SDL_SCANCODE_Z,
+            "attack": sdl2.SDL_SCANCODE_X,
+            "skill": sdl2.SDL_SCANCODE_A,
+            "dash": sdl2.SDL_SCANCODE_C,
+            "pause": sdl2.SDL_SCANCODE_P
         }
         for k, v in defaults.items():
             KEY_BINDINGS_DEFAULT[k] = v
         
         self._save_settings()
-        print("Đã khôi phục phím mặc định")
 
     def _adjust_value(self, delta):
         if self.selected == 0: self.music_volume = max(0, min(100, self.music_volume + delta))
@@ -190,7 +184,7 @@ class SettingState:
 
         # 4. Vẽ Tiêu đề
         title_text = "CÀI ĐẶT" if self.mode == "main" else "TÙY CHỈNH PHÍM"
-        self._draw_text(renderer, title_text, SCREEN_WIDTH // 2, 60, self.title_font, sdl2.SDL_Color(255, 215, 0, 255))
+        self.draw_text(title_text, SCREEN_WIDTH // 2, 60, (255, 215, 0), use_title_font=True)
 
         # 5. Vẽ nội dung tùy theo chế độ (Mode)
         if self.mode == "main":
@@ -200,7 +194,7 @@ class SettingState:
 
         # 6. Hướng dẫn sử dụng ở dưới cùng
         hint = "LEFT/RIGHT/UP/DOWN : Điều chỉnh   ENTER : Chọn   ESC : Quay lại" if self.mode == "main" else "NHẤN PHÍM MỚI ĐỂ GÁN (ESC để hủy)"
-        self._draw_text(renderer, hint, SCREEN_WIDTH // 2, SCREEN_HEIGHT - 65, self.font, sdl2.SDL_Color(180, 180, 180, 255))
+        self.draw_text(hint, SCREEN_WIDTH // 2, SCREEN_HEIGHT - 65, (180, 180, 180))
 
     def _render_main_menu(self, renderer):
         """Vẽ menu cài đặt chính 1 cột dọc"""
@@ -212,11 +206,11 @@ class SettingState:
             # Màu sắc nút (Vàng khi chọn, Đen mờ khi không chọn)
             if is_sel:
                 sdl2.SDL_SetRenderDrawColor(renderer, 255, 215, 0, 255)
-                text_color = sdl2.SDL_Color(0, 0, 0, 255)
+                text_color = (0, 0, 0)
             else:
                 sdl2.SDL_SetRenderDrawColor(renderer, 20, 20, 20, 160)
-                text_color = sdl2.SDL_Color(255, 255, 255, 255)
-            
+                text_color = (255, 255, 255)
+
             sdl2.SDL_RenderFillRect(renderer, rect)
 
             # Hiển thị giá trị cụ thể cho âm lượng
@@ -224,7 +218,7 @@ class SettingState:
             if i == 0: display_text += f": {self.music_volume}%"
             elif i == 1: display_text += f": {self.sfx_volume}%"
 
-            self._draw_text(renderer, display_text, SCREEN_WIDTH // 2, y + 18, self.font, text_color)
+            self.draw_text(display_text, SCREEN_WIDTH // 2, y + 18, text_color)
             y += 85
 
     def _render_key_config(self, renderer):
@@ -263,10 +257,10 @@ class SettingState:
         if is_sel:
             # Màu vàng rực cho lựa chọn (Bỏ nhấp nháy theo yêu cầu trước)
             sdl2.SDL_SetRenderDrawColor(renderer, 255, 200, 0, 255)
-            text_color = sdl2.SDL_Color(0, 0, 0, 255)
+            text_color = (0, 0, 0)
         else:
             sdl2.SDL_SetRenderDrawColor(renderer, 20, 20, 20, 180)
-            text_color = sdl2.SDL_Color(255, 255, 255, 255)
+            text_color = (255, 255, 255)
             
         sdl2.SDL_RenderFillRect(renderer, rect)
 
@@ -275,21 +269,42 @@ class SettingState:
             display_text = "Mặc định"
         else:
             name = self.key_names[index]
-            key_code = KEY_BINDINGS_DEFAULT[self.key_list[index]]
-            val_str = "< Chờ... >" if (self.mode == "remap" and index == self.remap_index) else sdl2.SDL_GetKeyName(key_code).decode('utf-8')
+            scancode = KEY_BINDINGS_DEFAULT[self.key_list[index]]
+
+            if self.mode == "remap" and index == self.remap_index:
+                val_str = "< Chờ... >"
+            else:
+                # SỬA TẠI ĐÂY: Sử dụng SDL_GetScancodeName thay vì SDL_GetKeyName
+                val_str = sdl2.SDL_GetScancodeName(scancode).decode('utf-8')
+            
             display_text = f"{name}: {val_str}"
 
-        self._draw_text(renderer, display_text, x + w // 2, y + 15, self.font, text_color)
+        self.draw_text(display_text, x + w // 2, y + h // 2, text_color)
 
-    def _draw_text(self, renderer, text, x, y, font, color):
-        """Hàm hỗ trợ vẽ chữ căn giữa"""
-        surf = ttf.TTF_RenderUTF8_Blended(font, text.encode('utf-8'), color)
-        if surf:
-            tex = sdl2.SDL_CreateTextureFromSurface(renderer, surf)
-            tw, th = surf.contents.w, surf.contents.h
-            sdl2.SDL_RenderCopy(renderer, tex, None, sdl2.SDL_Rect(x - tw // 2, y, tw, th))
-            sdl2.SDL_DestroyTexture(tex)
-            sdl2.SDL_FreeSurface(surf)
+    def draw_text(self, text, x, y, color=(255, 255, 255), use_title_font=False):
+        """Sử dụng font từ game.py và vẽ căn giữa tại x, y"""
+        font = self.game.title_font if use_title_font else self.game.font
+        if not font: return
 
-    def on_enter(self, **kwargs): self.selected = 0
+        sdl_color = sdl2.SDL_Color(color[0], color[1], color[2], 255)
+        surface = ttf.TTF_RenderUTF8_Blended(font, text.encode('utf-8'), sdl_color)
+        if not surface: return
+
+        # Chuyển surface thành texture để vẽ (Dùng self.game.renderer cho chắc chắn)
+        renderer = self.game.renderer 
+        texture = sdl2.SDL_CreateTextureFromSurface(renderer, surface)
+        
+        if texture:
+            w, h = surface.contents.w, surface.contents.h
+            # Tạo khung hình chữ nhật căn giữa tại x, y
+            rect = sdl2.SDL_Rect(x - w // 2, y - h // 2, w, h)
+            sdl2.SDL_RenderCopy(renderer, texture, None, rect)
+            sdl2.SDL_DestroyTexture(texture)
+
+        sdl2.SDL_FreeSurface(surface)
+
+    def on_enter(self, **kwargs): 
+        self.selected_index = 0
+        self.waiting_for_key = False
+
     def on_exit(self): self._save_settings()

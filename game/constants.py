@@ -60,16 +60,15 @@ TILEMAP_COLLISION_ID  = 1             # id tile solid trong tileset
 # Phím điều khiển mặc định
 # -------------------------------
 KEY_BINDINGS_DEFAULT = {
-    "left":     sdl2.SDLK_LEFT,        # hoặc sdl2.SDLK_LEFT
-    "right":    sdl2.SDLK_RIGHT,
-    "jump":     sdl2.SDLK_z,        # Z nhảy
-    "attack":   sdl2.SDLK_x,        # X chém kiếm
-    "skill":    sdl2.SDLK_a,        # A skill tầm xa
-    "dash":     sdl2.SDLK_c,        # C lướt / lăn né
-    "pause":    sdl2.SDLK_p,
-    "interact": sdl2.SDLK_e,        # tương tác NPC/checkpoint (nếu cần)
+    "left":     sdl2.SDL_SCANCODE_LEFT,  # Đổi từ SDLK sang SDL_SCANCODE
+    "right":    sdl2.SDL_SCANCODE_RIGHT,
+    "jump":     sdl2.SDL_SCANCODE_Z,
+    "attack":   sdl2.SDL_SCANCODE_X,
+    "skill":    sdl2.SDL_SCANCODE_A,
+    "dash":     sdl2.SDL_SCANCODE_C,
+    "pause":    sdl2.SDL_SCANCODE_P,
+    "interact": sdl2.SDL_SCANCODE_E,
 }
-
 # Cho phép người chơi tùy chỉnh sau này (lưu trong settings.json)
 
 # -------------------------------
