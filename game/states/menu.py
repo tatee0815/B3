@@ -41,6 +41,8 @@ class MenuState:
         self.blink_timer = 0.0
         self.particle_timer = 0.0
 
+        self.option_textures = []
+
         self._init_assets()
 
     def _init_assets(self):
@@ -81,12 +83,12 @@ class MenuState:
         for opt in self.options:
             o_surf = ttf.TTF_RenderUTF8_Blended(self.font, opt.encode('utf-8'), sdl2.SDL_Color(255, 255, 255))
             if o_surf:
-                tex = sdl2.SDL_CreateTextureFromSurface(renderer, o_surf)
+                tex = sdl2.SDL_CreateTextureFromSurface(self.game.renderer, o_surf)
                 self.opt_textures.append((tex, o_surf.contents.w, o_surf.contents.h))
                 sdl2.SDL_FreeSurface(o_surf)
 
         # 5. Render Hint (Sửa lỗi chữ bị dồn ở góc)
-        h_str = "UP / DOWN : Chọn  |  ENTER : Xác nhận  |  ESC : Thoát"
+        h_str = "UP / DOWN : Chọn  |  Z : Xác nhận  |  ESC : Thoát"
         h_surf = ttf.TTF_RenderUTF8_Blended(self.font, h_str.encode('utf-8'), sdl2.SDL_Color(220, 220, 220))
         if h_surf:
             self.hint_tex = sdl2.SDL_CreateTextureFromSurface(renderer, h_surf)

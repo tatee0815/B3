@@ -30,7 +30,7 @@ def main():
         print("Chi tiết SDL:", err.decode('utf-8') if err else "Không có lỗi")
         sys.exit(1)
 
-    print("SDL2 init thành công (low-level)!")
+    # print("SDL2 init thành công (low-level)!")
 
     # Tạo window thủ công (không dùng sdl2.ext.Window)
     window = sdl2.SDL_CreateWindow(
@@ -50,7 +50,11 @@ def main():
     print("Cửa sổ game đã mở!")
 
     # Tạo renderer (thay vì window.get_renderer())
-    renderer = sdl2.SDL_CreateRenderer(window, -1, sdl2.SDL_RENDERER_ACCELERATED)
+    renderer = sdl2.SDL_CreateRenderer(
+        window, 
+        -1, 
+        sdl2.SDL_RENDERER_ACCELERATED | sdl2.SDL_RENDERER_PRESENTVSYNC
+    )
     if not renderer:
         print("Không tạo được renderer!")
         print("Lỗi SDL:", sdl2.SDL_GetError().decode('utf-8'))
