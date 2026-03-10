@@ -14,11 +14,12 @@ class PauseState:
         self.MENU_SETTINGS = 1
         self.MENU_CONTROLS = 2
         self.current_sub_menu = self.MENU_MAIN
+
+        self.mode = "main" # "main" hoặc "remap"
+        self.remap_index = -1
         
         self.main_options = ["Tiếp Tục", "Cài Đặt", "Phím Bấm", "Thoát ra Menu"]
         self.selected_index = 0
-        self.volume_music = 70
-        self.volume_sfx = 80
 
     def on_enter(self, **kwargs):
         self.current_sub_menu = self.MENU_MAIN
@@ -31,61 +32,91 @@ class PauseState:
         pass
 
     def get_current_options(self):
+        # Lấy trực tiếp từ SettingState để đồng bộ
+        setting = self.game.states["setting"]
         if self.current_sub_menu == self.MENU_MAIN:
             return self.main_options
         elif self.current_sub_menu == self.MENU_SETTINGS:
-            return [f"Nhạc Nền: {self.volume_music}%", f"Hiệu Ứng: {self.volume_sfx}%", "Quay lại"]
+            return [f"Nhạc Nền: {setting.music_volume}%", f"Hiệu Ứng: {setting.sfx_volume}%", "Quay lại"]
         elif self.current_sub_menu == self.MENU_CONTROLS:
-            controls = [f"{k.upper()}: {sdl2.SDL_GetScancodeName(v).decode()}" 
-                        for k, v in KEY_BINDINGS_DEFAULT.items()]
+            # Sử dụng key_names tiếng Việt từ SettingState cho đồng bộ
+            setting = self.game.states["setting"]
+            controls = []
+            for i in range(len(setting.key_names)):
+                name = setting.key_names[i]
+                scancode = KEY_BINDINGS_DEFAULT[setting.key_list[i]]
+                controls.append(f"{name}: {sdl2.SDL_GetScancodeName(scancode).decode()}")
             return controls + ["Quay lại"]
         return []
 
     def handle_event(self, event):
         if event.type == sdl2.SDL_KEYDOWN:
             scancode = event.key.keysym.scancode
-            options = self.get_current_options()
+            
+            # Nếu đang chờ nhấn phím mới (Remap)
+            if self.mode == "remap":
+                if scancode != sdl2.SDL_SCANCODE_ESCAPE:
+                    # Lấy danh sách key từ SettingState để đồng bộ
+                    setting = self.game.states["setting"]
+                    KEY_BINDINGS_DEFAULT[setting.key_list[self.remap_index]] = scancode
+                    setting._save_settings() # Lưu lại vào JSON
+                self.mode = "main"
+                return
 
-            # Bấm ESC để thoát menu tạm dừng hoặc quay lại menu chính của Pause
+            # Logic điều hướng Menu bình thường
+            options = self.get_current_options()
             if scancode == sdl2.SDL_SCANCODE_ESCAPE:
                 if self.current_sub_menu == self.MENU_MAIN:
-                    self.game.resume_game() 
+                    self.game.change_state("playing")
                 else:
                     self.current_sub_menu = self.MENU_MAIN
                     self.selected_index = 0
                 return
 
-            # Chỉ nhận phím mũi tên để di chuyển trong menu
             if scancode == sdl2.SDL_SCANCODE_UP:
                 self.selected_index = (self.selected_index - 1) % len(options)
             elif scancode == sdl2.SDL_SCANCODE_DOWN:
                 self.selected_index = (self.selected_index + 1) % len(options)
-            
-            # Phím xác nhận
-            elif scancode in (sdl2.SDL_SCANCODE_RETURN, sdl2.SDL_SCANCODE_Z, sdl2.SDL_SCANCODE_SPACE):
+            elif scancode == sdl2.SDL_SCANCODE_RETURN or scancode == sdl2.SDL_SCANCODE_Z :
                 self.process_selection()
 
-            # Điều chỉnh âm lượng (Chỉ dùng mũi tên Trái/Phải)
+            # Điều chỉnh âm lượng bằng phím Trái/Phải
             if self.current_sub_menu == self.MENU_SETTINGS:
-                if scancode == sdl2.SDL_SCANCODE_LEFT: 
-                    self.adjust_volume(-5)
-                elif scancode == sdl2.SDL_SCANCODE_RIGHT: 
-                    self.adjust_volume(5)
+                if scancode == sdl2.SDL_SCANCODE_LEFT: self.adjust_volume(-5)
+                elif scancode == sdl2.SDL_SCANCODE_RIGHT: self.adjust_volume(5)
 
     def process_selection(self):
         if self.current_sub_menu == self.MENU_MAIN:
-            if self.selected_index == 0: self.game.resume_game()
+            if self.selected_index == 0: self.game.change_state("playing")
             elif self.selected_index == 1: self.current_sub_menu = self.MENU_SETTINGS
             elif self.selected_index == 2: self.current_sub_menu = self.MENU_CONTROLS
             elif self.selected_index == 3: self.game.change_state("menu")
-        elif self.current_sub_menu in (self.MENU_SETTINGS, self.MENU_CONTROLS):
-            if self.selected_index == len(self.get_current_options()) - 1:
+            self.selected_index = 0 # Reset trỏ khi vào menu con
+            
+        elif self.current_sub_menu == self.MENU_CONTROLS:
+            options = self.get_current_options()
+            if self.selected_index == len(options) - 1: # Nút "Quay lại"
                 self.current_sub_menu = self.MENU_MAIN
-                self.selected_index = 0
+                self.selected_index = 2
+            else:
+                # Kích hoạt chế độ Remap ngay tại Pause
+                self.mode = "remap"
+                self.remap_index = self.selected_index
+
+        elif self.current_sub_menu == self.MENU_SETTINGS:
+            if self.selected_index == 2: # Nút "Quay lại"
+                self.current_sub_menu = self.MENU_MAIN
+                self.selected_index = 1
 
     def adjust_volume(self, amount):
-        if self.selected_index == 0: self.volume_music = max(0, min(100, self.volume_music + amount))
-        elif self.selected_index == 1: self.volume_sfx = max(0, min(100, self.volume_sfx + amount))
+        # Chỉnh trực tiếp vào đối tượng SettingState
+        setting = self.game.states["setting"]
+        if self.selected_index == 0:
+            setting.music_volume = max(0, min(100, setting.music_volume + amount))
+        elif self.selected_index == 1:
+            setting.sfx_volume = max(0, min(100, setting.sfx_volume + amount))
+        # Lưu lại cấu hình ngay khi chỉnh
+        setting._save_settings()
 
     def draw_text(self, text, x, y, color=(255, 255, 255), use_title_font=False):
         """Sử dụng font từ game.py"""
@@ -170,3 +201,7 @@ class PauseState:
                 
                 sdl2.SDL_RenderFillRect(renderer, sdl2.SDL_Rect(bx, by, bw, bh))
                 self.draw_text(text, SCREEN_WIDTH // 2, by + bh // 2, color=text_color)
+
+        if self.mode == "remap":
+            hint = "NHẤN PHÍM MỚI ĐỂ GÁN (ESC để hủy)"
+            self.draw_text(hint, SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50, color=(255, 200, 0))

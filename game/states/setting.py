@@ -23,8 +23,8 @@ class SettingState:
         self.music_volume = 70
         self.sfx_volume = 85
 
-        self.key_names = ["Trái", "Phải", "Nhảy", "Chém", "Skill", "Lướt", "Tạm dừng"]
-        self.key_list = ["left", "right", "jump", "attack", "skill", "dash", "pause"]
+        self.key_names = ["Trái", "Phải", "Nhảy", "Chém", "Skill", "Lướt", "Tạm dừng", "Tương tác"]
+        self.key_list = ["left", "right", "jump", "attack", "skill", "dash", "pause", "interact"]
 
         self._load_settings()
 
@@ -36,23 +36,29 @@ class SettingState:
                     data = json.load(f)
                     self.music_volume = data.get("music_volume", 70)
                     self.sfx_volume = data.get("sfx_volume", 85)
+                    
                     if "controls" in data:
-                        for k, v in data["controls"].items():
-                            if k in KEY_BINDINGS_DEFAULT:
-                                KEY_BINDINGS_DEFAULT[k] = getattr(sdl2, v) if isinstance(v, str) else v
-            except: pass
+                        saved_controls = data["controls"]
+                        for k in self.key_list:
+                            if k in saved_controls:
+                                # Gán giá trị số nguyên từ JSON vào KEY_BINDINGS_DEFAULT
+                                KEY_BINDINGS_DEFAULT[k] = int(saved_controls[k])
+            except : pass
 
     def _save_settings(self):
         os.makedirs("config", exist_ok=True)
-        # Chuyển đổi SDL Key thành string để lưu JSON an toàn
-        controls = {k: sdl2.SDL_GetKeyName(v).decode('utf-8') for k, v in KEY_BINDINGS_DEFAULT.items()}
+        # Tạo bản sao của controls nhưng đảm bảo giá trị là số nguyên
+        controls_to_save = {}
+        for k, v in KEY_BINDINGS_DEFAULT.items():
+            controls_to_save[k] = int(v) # Ép kiểu về số nguyên để lưu JSON chuẩn
+
         data = {
             "music_volume": self.music_volume,
             "sfx_volume": self.sfx_volume,
-            "controls": controls
+            "controls": controls_to_save
         }
         with open("config/settings.json", "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
+            json.dump(data, f, indent=4)
 
     def handle_event(self, event):
         if event.type != sdl2.SDL_KEYDOWN: return
@@ -72,34 +78,14 @@ class SettingState:
 
         # 2. ĐIỀU HƯỚNG TRONG "sub_menu" (Tùy chỉnh phím)
         if self.mode == "sub_menu":
-            # Chỉ nhận phím mũi tên Lên/Xuống
+            # Chỉ nhận phím mũi tên Lên/Xuống để duyệt danh sách theo thứ tự
             if scancode == sdl2.SDL_SCANCODE_UP:
-                if self.selected == 7: # Từ nút "Mặc định" lên lại
-                    self.selected = 6  # Lên phím cuối cùng của cột 2 (Tạm dừng)
-                else:
-                    self.selected = (self.selected - 1) % 8
+                # Nếu đang ở vị trí 0 (Trái), nhảy xuống cuối là vị trí 8 (Mặc định)
+                self.selected = (self.selected - 1) % 9
                     
             elif scancode == sdl2.SDL_SCANCODE_DOWN:
-                # Từ phím Chém (index 3) hoặc Tạm dừng (index 6) xuống Mặc định (index 7)
-                if self.selected in (3, 6): 
-                    self.selected = 7
-                elif self.selected == 7:
-                    self.selected = 0 # Từ Mặc định về đầu danh sách
-                else:
-                    self.selected = (self.selected + 1) % 8
-
-            # Chỉ nhận phím mũi tên Trái/Phải để nhảy cột
-            elif scancode == sdl2.SDL_SCANCODE_LEFT:
-                if 4 <= self.selected <= 6: # Đang ở cột 2
-                    self.selected -= 4      # Nhảy sang cột 1
-                elif self.selected == 7:    # Đang ở nút Mặc định
-                    self.selected = 3       # Nhảy lên phím cuối cột 1 (Chém)
-                    
-            elif scancode == sdl2.SDL_SCANCODE_RIGHT:
-                if 0 <= self.selected <= 2: # Đang ở cột 1
-                    self.selected += 4      # Nhảy sang cột 2
-                elif self.selected == 7:    # Đang ở nút Mặc định
-                    self.selected = 6       # Nhảy lên phím cuối cột 2 (Tạm dừng)
+                # Duyệt từ trên xuống dưới, hết Mặc định sẽ quay lại Trái
+                self.selected = (self.selected + 1) % 9
 
         # 3. ĐIỀU HƯỚNG TRONG "main" (Menu Cài đặt chính)
         else:
@@ -123,7 +109,7 @@ class SettingState:
                 elif self.selected == 3: # Nút "Quay lại" trong menu chính
                     self.game.change_state("menu")
             elif self.mode == "sub_menu":
-                if self.selected == 7: # Chọn nút "Mặc định"
+                if self.selected == 8: # Chọn nút "Mặc định"
                     self._reset_keys_only()
                 else:
                     self.remap_index = self.selected
@@ -146,7 +132,8 @@ class SettingState:
             "attack": sdl2.SDL_SCANCODE_X,
             "skill": sdl2.SDL_SCANCODE_A,
             "dash": sdl2.SDL_SCANCODE_C,
-            "pause": sdl2.SDL_SCANCODE_P
+            "pause": sdl2.SDL_SCANCODE_P,
+            "interact": sdl2.SDL_SCANCODE_E,
         }
         for k, v in defaults.items():
             KEY_BINDINGS_DEFAULT[k] = v
@@ -247,7 +234,7 @@ class SettingState:
         default_btn_x = (SCREEN_WIDTH - default_btn_w) // 2
         default_btn_y = start_y + (4 * gap_y) # Nằm ở hàng thứ 5
         
-        is_sel_default = (self.selected == 7)
+        is_sel_default = (self.selected == 8)
         self._draw_option_box(renderer, default_btn_x, default_btn_y, default_btn_w, 60, 7, is_sel_default, is_default_btn=True)
 
     def _draw_option_box(self, renderer, x, y, w, h, index, is_sel, is_default_btn=False):

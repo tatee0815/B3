@@ -55,10 +55,22 @@ class PlayingState:
 
     def handle_event(self, event):
         if event.type == sdl2.SDL_KEYDOWN:
-            if event.key.keysym.scancode == sdl2.SDL_SCANCODE_ESCAPE:
+            scancode = event.key.keysym.scancode
+            
+            # 1. Xử lý Tạm dừng (Dùng Scancode đồng bộ)
+            from game.constants import KEY_BINDINGS_DEFAULT
+            if scancode == KEY_BINDINGS_DEFAULT["pause"] or scancode == sdl2.SDL_SCANCODE_ESCAPE:
                 self.game.change_state("pause")
                 return
 
+            # 2. Xử lý Tương tác (Trò chuyện/Mở hòm)
+            if scancode == KEY_BINDINGS_DEFAULT["interact"]:
+                # Kiểm tra va chạm với NPC hoặc Object gần đó
+                if hasattr(self, 'player'):
+                    self.player.interact() # Giả định player có hàm interact()
+                return
+
+        # 3. Chuyển các phím di chuyển/chiến đấu cho Player xử lý
         if self.player:
             self.player.handle_input(event)
 
