@@ -66,8 +66,24 @@ class PlayingState:
         if not self.player or not self.level:
             return
 
-        # Player update xử lý di chuyển và va chạm thông qua level.handle_collision
-        self.player.update(delta_time, self.level)
+        # 1. Update vị trí các Platform di chuyển trước
+        if hasattr(self.level, 'platforms'):
+            for plat in self.level.platforms:
+                if hasattr(plat, 'update'):
+                    plat.resolve_collision(self.player, delta_time)
+
+        # 2. Cho Player di chuyển (áp dụng vận tốc, trọng lực) 
+        # nhưng CHƯA gọi level.handle_collision bên trong player.update
+        self.player.update(delta_time, self.level) 
+
+        # 3. Ưu tiên kiểm tra va chạm với Platform trước
+        # Nếu đứng trên platform thành công, on_ground sẽ thành True
+        if hasattr(self.level, 'platforms'):
+            for plat in self.level.platforms:
+                plat.resolve_collision(self.player, delta_time)
+
+        # 4. Chỉ xử lý va chạm với Level (gạch) nếu chưa đứng vững trên Platform
+        # Điều này ngăn việc sàn gạch bên dưới "hút" nhân vật xuyên qua platform
 
         self.level.update_entities(delta_time)
 
@@ -124,9 +140,16 @@ class PlayingState:
         
         if self.level:
             self.level.render(renderer, self.game.camera)
+
+            if hasattr(self.level, 'platforms'):
+                for plat in self.level.platforms:
+                    plat.render(renderer, self.game.camera)
+
             self.level.render_entities(renderer, self.game.camera)
+
         if self.player:
             self.player.render(renderer, self.game.camera)
+
 
         # if hasattr(self, 'test_checkpoint'):
         #     self.test_checkpoint.render(renderer, self.game.camera)

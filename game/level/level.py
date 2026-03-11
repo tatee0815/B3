@@ -19,7 +19,8 @@ class Level:
         self.entities = []
         self.entities_data = []
         self.enemies = []
-        self.tiles = []         
+        self.platforms = []
+        self.tiles = []  
         self.bg_color = (0, 0, 0, 255)
         self.start_position = (100, 100)
         self.gravity = GRAVITY
@@ -80,30 +81,33 @@ class Level:
     def _resolve_collision(self, player, tile):
         p = player.rect
         
-        # TÍNH TOÁN SAI LỆCH (Overlap)
+        # 1. Tính độ lún
         overlap_x = min(p.x + p.w, tile.x + tile.w) - max(p.x, tile.x)
         overlap_y = min(p.y + p.h, tile.y + tile.h) - max(p.y, tile.y)
 
-        # Ưu tiên xử lý va chạm theo trục có độ lún nhỏ hơn (giảm thiểu kẹt biên)
-        if overlap_x > overlap_y:
-            # Va chạm dọc (Y)
-            if player.vel_y > 0 and p.y < tile.y: # Rơi xuống
-                p.y = tile.y - p.h
-                player.pos_y = float(p.y)
-                player.vel_y = 0
-                player.on_ground = True
-            elif player.vel_y < 0 and p.y > tile.y: # Nhảy đụng trần
-                p.y = tile.y + tile.h
-                player.pos_y = float(p.y)
-                player.vel_y = 0
+        # 2. Xác định trục va chạm chính
+        if overlap_x < overlap_y:
+            # VA CHẠM NGANG (Tường)
+            if p.x + p.w / 2 < tile.x + tile.w / 2: # Chạm tường bên phải
+                p.x -= overlap_x
+            else: # Chạm tường bên trái
+                p.x += overlap_x
+            player.pos_x = float(p.x)
+            
+            # Dừng dash nếu đâm tường
+            if hasattr(player, 'is_dashing') and player.is_dashing:
+                player.is_dashing = False
+                player.vel_x = 0
         else:
-            # Va chạm ngang (X) - Chỉ xử lý khi player thực sự đang di chuyển ngang
-            if player.vel_x > 0 and p.x < tile.x: # Chạm tường phải
-                p.x = tile.x - p.w
-                player.pos_x = float(p.x)
-            elif player.vel_x < 0 and p.x > tile.x: # Chạm tường trái
-                p.x = tile.x + tile.w
-                player.pos_x = float(p.x)
+            # VA CHẠM DỌC (Sàn/Trần)
+            if p.y + p.h / 2 < tile.y + tile.h / 2: # Đứng trên sàn
+                p.y -= overlap_y
+                player.vel_y = 0
+                player.on_ground = True # Bật nhảy được là nhờ dòng này!
+            else: # Đụng trần
+                p.y += overlap_y
+                player.vel_y = 0
+            player.pos_y = float(p.y)
 
     def render(self, renderer, camera):
         """Vẽ map với kiểm tra biên an toàn để tránh IndexError"""
@@ -156,6 +160,7 @@ class Level:
         """Khởi tạo tất cả thực thể từ dữ liệu JSON"""
         self.entities.clear()
         self.enemies.clear() # Xóa danh sách quái cũ
+        self.platforms = []
         
         for e in self.entities_data:
             etype = e.get("type")
@@ -185,6 +190,17 @@ class Level:
                 from game.objects.platform import Platform
                 plat = Platform(game, x, y, e.get("w", 128), e.get("h", 32))
                 self.entities.append(plat)
+                # Phải có dòng này để vòng lặp ở bước 2 tìm thấy platform để vẽ
+                if not hasattr(self, 'platforms'): self.platforms = []
+                self.platforms.append(plat)
+
+            elif etype == "moving_platform":
+                from game.objects.platform import MovingPlatform
+                # Thêm tốc độ và hướng từ JSON
+                m_plat = MovingPlatform(game, x, y, e.get("w", 128), e.get("h", 20), 
+                                        speed=e.get("speed", 2.0))
+                self.entities.append(m_plat)
+                self.platforms.append(m_plat)
                 
             elif etype == "coin":
                 from game.entities.collectible import Coin

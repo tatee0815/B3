@@ -1,74 +1,70 @@
-"""
-Các loại platform: solid, one-way (chỉ chặn từ dưới lên), moving
-"""
-
-import sdl2.ext
-from game.constants import TILE_SIZE, GRAVITY
-from game.entities.base import Entity  # dùng base để có rect, render
-
+import sdl2
+from game.constants import TILE_SIZE
+from game.entities.base import Entity
 
 class Platform(Entity):
     """Platform solid thông thường (không di chuyển)"""
-
     def __init__(self, game, x, y, w=TILE_SIZE, h=TILE_SIZE, tile_id=1):
         super().__init__(game, x, y, w, h)
-        self.tile_id = tile_id  # để biết loại tile khi render
-        self.color = (100, 180, 80, 255)  # xanh lá fallback
+        self.color = (100, 180, 80, 255) # Màu xanh lá
         self.solid = True
-        self.one_way = False
-
-    def resolve_collision(self, player):
-        """Xử lý va chạm với player (gọi từ level)"""
-        if not self.solid:
-            return
-        
-        # Đơn giản: chặn đứng trên
-        if player.vel_y > 0 and player.rect.bottom <= self.rect.top + 8:
-            player.rect.bottom = self.rect.top
-            player.vel_y = 0
-            player.on_ground = True
-
-
-class OneWayPlatform(Platform):
-    """Platform chỉ chặn từ dưới lên (nhảy xuyên từ dưới)"""
-
-    def __init__(self, game, x, y, w=TILE_SIZE, h=TILE_SIZE):
-        super().__init__(game, x, y, w, h)
-        self.one_way = True
-        self.color = (120, 200, 100, 180)  # mờ hơn tí
-
-    def resolve_collision(self, player):
-        # Chỉ chặn nếu player đang rơi xuống và chân chạm từ trên
-        if player.vel_y > 0 and player.rect.bottom <= self.rect.top + 6:
-            player.rect.bottom = self.rect.top
-            player.vel_y = 0
-            player.on_ground = True
-
-
-class MovingPlatform(Platform):
-    """Platform di chuyển ngang hoặc dọc (như thang máy)"""
-
-    def __init__(self, game, x, y, w=TILE_SIZE*3, h=TILE_SIZE, speed=2.0, direction=1):
-        super().__init__(game, x, y, w, h)
-        self.speed = speed
-        self.direction = direction  # 1: phải/xuống, -1: trái/lên
-        self.is_horizontal = True   # True: ngang, False: dọc
-        self.min_pos = x if self.is_horizontal else y
-        self.max_pos = x + 200 if self.is_horizontal else y + 200
-        self.color = (180, 100, 60, 255)
 
     def update(self, delta_time, level=None):
+        # Ghi đè để đứng yên, không bị trọng lực hút
+        pass
+
+    def resolve_collision(self, player, delta_time=None):
+        if not self.solid: return
+        player_bottom = player.rect.y + player.rect.h
+        platform_top = self.rect.y
+        
+        if player.vel_y > 0 and player_bottom <= platform_top + 15:
+            if sdl2.SDL_HasIntersection(player.rect, self.rect):
+                player.rect.y = platform_top - player.rect.h
+                player.pos_y = float(player.rect.y)
+                player.vel_y = 0
+                player.on_ground = True
+
+    def render(self, renderer, camera):
+        # Tính toán vị trí hiển thị theo camera
+        render_x = int(self.rect.x - camera.x)
+        render_y = int(self.rect.y - camera.y)
+        dst_rect = sdl2.SDL_Rect(render_x, render_y, self.rect.w, self.rect.h)
+        
+        sdl2.SDL_SetRenderDrawColor(renderer, *self.color)
+        sdl2.SDL_RenderFillRect(renderer, dst_rect)
+        # Vẽ viền để dễ nhìn bục nhảy
+        sdl2.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 150)
+        sdl2.SDL_RenderDrawRect(renderer, dst_rect)
+
+class OneWayPlatform(Platform):
+    def __init__(self, game, x, y, w=TILE_SIZE, h=TILE_SIZE):
+        super().__init__(game, x, y, w, h)
+        self.color = (120, 200, 100, 180) # Màu xanh mờ
+
+    def resolve_collision(self, player, delta_time=None):
+        player_bottom = player.rect.y + player.rect.h
+        if player.vel_y > 0 and player_bottom <= self.rect.y + 6:
+            if sdl2.SDL_HasIntersection(player.rect, self.rect):
+                player.rect.y = self.rect.y - player.rect.h
+                player.pos_y = float(player.rect.y)
+                player.vel_y = 0
+                player.on_ground = True
+
+class MovingPlatform(Platform):
+    def __init__(self, game, x, y, w=TILE_SIZE*3, h=TILE_SIZE, speed=2.0):
+        super().__init__(game, x, y, w, h)
+        self.speed = speed
+        self.direction = 1
+        self.is_horizontal = True
+        self.min_pos = x
+        self.max_pos = x + 200
+        self.color = (180, 100, 60, 255) # Màu nâu đỏ
+
+    def update(self, delta_time, level=None):
+        # Tự di chuyển trong phạm vi
+        move = self.speed * self.direction * delta_time * 60
         if self.is_horizontal:
-            self.rect.x += self.speed * self.direction * delta_time * 60
+            self.rect.x += int(move)
             if self.rect.x <= self.min_pos or self.rect.x >= self.max_pos:
                 self.direction *= -1
-        else:
-            self.rect.y += self.speed * self.direction * delta_time * 60
-            if self.rect.y <= self.min_pos or self.rect.y >= self.max_pos:
-                self.direction *= -1
-
-    def resolve_collision(self, player):
-        # Tương tự platform solid, nhưng di chuyển player theo platform
-        super().resolve_collision(player)
-        if player.on_ground and player.rect.bottom == self.rect.top:
-            player.rect.x += self.speed * self.direction * delta_time * 60  # dính theo platform
