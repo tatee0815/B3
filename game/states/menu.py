@@ -19,7 +19,7 @@ class MenuState:
     def __init__(self, game):
         self.game = game
         self.name = "menu"
-        self.options = ["Bắt đầu chơi", "Cài đặt", "Thoát game"]
+        self.options = ["Tiếp tục","Bắt đầu mới", "Cài đặt", "Thoát game"]
         self.selected = 0
 
         # Assets & Textures
@@ -123,10 +123,21 @@ class MenuState:
 
     def _handle_selection(self):
         choice = self.options[self.selected]
-        if choice == "Bắt đầu chơi": self.game.change_state("playing")
+        
+        if choice == "Tiếp tục":
+            # Chuyển vào game mà không reset, giữ nguyên vị trí cũ hoặc Checkpoint
+            self.game.change_state("playing", reset=False, menu_continue=True)
+            
+        elif choice == "Bắt đầu mới":
+            # Buộc PlayingState phải load lại map và reset Player về vị trí spawn gốc
+            self.game.reset_progress()  # Đảm bảo reset lại progress nếu có
+            self.game.change_state("playing", reset=True)
+            
         elif choice == "Cài đặt":
             self.game.change_state("setting")
-        elif choice == "Thoát game": self.game.running = False
+            
+        elif choice == "Thoát game":
+            self.game.running = False
 
     def render(self, renderer):
         sdl2.SDL_SetRenderDrawBlendMode(renderer, sdl2.SDL_BLENDMODE_NONE)

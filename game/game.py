@@ -48,6 +48,9 @@ class Game:
         self.current_state = None
         self.states = {}
 
+        self.is_paused = False
+        self.last_time = sdl2.timer.SDL_GetTicks()
+
         # Progress người chơi
         self.player_progress = {
             "current_level": "level1_forest",
@@ -59,6 +62,8 @@ class Game:
         }
         self.player_progress = load_game(self.player_progress)
         self.lives = MAX_LIVES
+
+        self.reset_progress()
 
         # Camera & HUD
         self.camera = Camera(self, SCREEN_WIDTH, SCREEN_HEIGHT)
@@ -163,6 +168,19 @@ class Game:
             player = self.states["playing"].player
             if player:
                 self.camera.update(player)
+                
+    def reset_progress(self):
+        self.player_progress = {
+            "current_level": "level1_forest",
+            "hp": PLAYER_MAX_HP,
+            "mana": MANA_MAX,
+            "gold": 0,
+            "double_jump": False,
+            "total_deaths": 0,
+            "unlocked_skills": []
+        }
+        # Nếu bạn có hệ thống lives (mạng)
+        self.lives = MAX_LIVES
 
     def render(self):
         sdl2.SDL_SetRenderDrawColor(self.renderer, 0, 0, 0, 255)

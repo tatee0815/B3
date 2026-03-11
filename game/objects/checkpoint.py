@@ -1,41 +1,31 @@
-"""
-Cột checkpoint - khi chạm thì lưu vị trí respawn
-"""
+import sdl2
+from game.constants import COLORS
 
-from game.constants import TILE_SIZE
-from game.entities.base import Entity
-
-
-class Checkpoint(Entity):
-    """Cột checkpoint (flag)"""
-
-    def __init__(self, game, x, y):
-        super().__init__(game, x, y, TILE_SIZE, TILE_SIZE*2)  # cao gấp đôi
-        self.color = (60, 180, 60, 255)  # xanh lá
+class Checkpoint:
+    def __init__(self, game, x, y, w=32, h=64):
+        self.game = game
+        self.rect = sdl2.SDL_Rect(x, y, w, h)
         self.activated = False
-        self.activated_color = (220, 220, 60, 255)  # vàng khi active
 
-    def activate(self):
-        if self.activated:
-            return
-        self.activated = True
-        print("Checkpoint activated!")
-        
-        # Lưu vị trí cho player respawn
-        level = self.game.states["playing"].level
-        level.last_checkpoint = (self.rect.centerx, self.rect.bottom - 48)  # spawn trên cột
-        
-        # Có thể play sound hoặc animation
-
-    def update(self, delta_time, level=None):
-        # Check player chạm
-        player = self.game.states["playing"].player
-        if player and self.collides_with(player):
-            self.activate()
+    def update(self, player):
+        # Kiểm tra va chạm giữa Player và Checkpoint
+        if not self.activated:
+            if sdl2.SDL_HasIntersection(self.rect, player.rect):
+                self.activated = True
+                # Lưu vị trí hiện tại của Checkpoint làm điểm hồi sinh mới
+                player.checkpoint_pos = (self.rect.x, self.rect.y - 20) 
+                print(f"[Checkpoint] Đã kích hoạt tại: {player.checkpoint_pos}")
 
     def render(self, renderer, camera):
-        color = self.activated_color if self.activated else self.color
-        renderer.fill(color,
-                      (self.rect.x - camera.x,
-                       self.rect.y - camera.y,
-                       self.rect.w, self.rect.h))
+        # Vẽ Checkpoint để test: Màu xanh lam nếu chưa kích hoạt, màu vàng nếu rồi
+        color = (255, 255, 0) if self.activated else (0, 0, 255)
+        
+        draw_rect = sdl2.SDL_Rect(
+            int(self.rect.x - camera.x),
+            int(self.rect.y - camera.y),
+            self.rect.w,
+            self.rect.h
+        )
+        
+        sdl2.SDL_SetRenderDrawColor(renderer, color[0], color[1], color[2], 255)
+        sdl2.SDL_RenderFillRect(renderer, draw_rect)

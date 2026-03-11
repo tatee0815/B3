@@ -10,12 +10,13 @@ class Level:
         self.renderer = game.renderer
         
         self.name = ""
-        self.width = 0          # Số lượng tile ngang
-        self.height = 0         # Số lượng tile dọc
+        self.width = 0 
+        self.height = 0
+        self.tile_size = 32  # THÊM DÒNG NÀY: Mặc định là 32
         self.pixel_width = 0    
         self.pixel_height = 0   
-        self.entities = []       # Các thực thể trong level (nếu có)
-        self.entities_data = []  # Dữ liệu thô từ JSON để khởi tạo thực thể sau này
+        self.entities = []
+        self.entities_data = []
         self.tiles = []         
         self.bg_color = (0, 0, 0, 255)
         self.start_position = (100, 100)
@@ -34,19 +35,21 @@ class Level:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
+                
+                # Nạp tile_size từ file JSON, nếu không có thì dùng hằng số TILE_SIZE
+                from game.constants import TILE_SIZE
+                self.tile_size = data.get("tile_size", TILE_SIZE)
+                
                 self.width = data["width"]
                 self.height = data["height"]
                 self.tiles = data["tiles"]
-                self.pixel_width = self.width * TILE_SIZE
-                self.pixel_height = self.height * TILE_SIZE
                 
-                self.entities_data = data.get("entities", [])
-                self.entities = []  # sẽ spawn sau
-
-                sp = data.get("start_position", {"x": 100, "y": 100})
-                self.start_position = (sp["x"], sp["y"])
-                self.bg_color = tuple(data.get("bg_color", [30, 30, 30, 255]))
-                self.gravity = data.get("gravity", GRAVITY)
+                # Sử dụng self.tile_size để tính toán
+                self.pixel_width = self.width * self.tile_size
+                self.pixel_height = self.height * self.tile_size
+                
+                if "start_position" in data:
+                    self.start_position = (data["start_position"]["x"], data["start_position"]["y"])
                 return True
         except Exception as e:
             print(f"[Level] Lỗi JSON: {e}")

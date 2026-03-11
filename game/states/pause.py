@@ -90,11 +90,18 @@ class PauseState:
         options = self.get_current_options()
 
         if self.current_sub_menu == self.MENU_MAIN:
-            if self.selected_index == 0: self.game.change_state("playing")
-            elif self.selected_index == 1: self.current_sub_menu = self.MENU_SETTINGS
-            elif self.selected_index == 2: self.current_sub_menu = self.MENU_CONTROLS
-            elif self.selected_index == 3: self.game.change_state("menu")
-            self.selected_index = 0 # Reset trỏ khi vào menu con
+            if self.selected_index == 0: 
+                self.game.change_state("playing")
+                return
+            elif self.selected_index == 1: 
+                self.current_sub_menu = self.MENU_SETTINGS
+                self.selected_index = 0 # Reset trỏ khi vào menu con
+            elif self.selected_index == 2: 
+                self.current_sub_menu = self.MENU_CONTROLS
+                self.selected_index = 0 # Reset trỏ khi vào menu con
+            elif self.selected_index == 3: 
+                self.game.change_state("menu")
+                return
             
         elif self.current_sub_menu == self.MENU_CONTROLS:
             if self.selected_index == len(options) - 1: # Nút "Quay lại"
