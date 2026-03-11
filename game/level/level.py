@@ -3,6 +3,7 @@ import sdl2
 import json
 import os
 from game.constants import TILE_SIZE, SCREEN_WIDTH, SCREEN_HEIGHT, GRAVITY
+from game.entities.enemy import Goblin, Skeleton, FireBat, BossShadowKing
 
 class Level:
     def __init__(self, game):
@@ -17,6 +18,7 @@ class Level:
         self.pixel_height = 0   
         self.entities = []
         self.entities_data = []
+        self.enemies = []
         self.tiles = []         
         self.bg_color = (0, 0, 0, 255)
         self.start_position = (100, 100)
@@ -37,13 +39,15 @@ class Level:
                 data = json.load(f)
                 
                 # Nạp tile_size từ file JSON, nếu không có thì dùng hằng số TILE_SIZE
-                from game.constants import TILE_SIZE
                 self.tile_size = data.get("tile_size", TILE_SIZE)
                 
                 self.width = data["width"]
                 self.height = data["height"]
                 self.tiles = data["tiles"]
-                
+                self.bg_color = data.get("bg_color", [0, 0, 0, 255])
+
+                self.entities_data = data.get("entities", [])
+
                 # Sử dụng self.tile_size để tính toán
                 self.pixel_width = self.width * self.tile_size
                 self.pixel_height = self.height * self.tile_size
@@ -140,6 +144,7 @@ class Level:
                         elif tile_id == 2: # Nền tảng
                             sdl2.SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255)
                             sdl2.SDL_RenderFillRect(renderer, dst_rect)
+        self.render_entities(renderer, camera)
 
     def get_spawn_position(self):
         return self.start_position
@@ -148,53 +153,114 @@ class Level:
         return player.rect.x > (self.pixel_width - 100)
     
     def spawn_all_entities(self, game):
-        """Tạo các entity từ dữ liệu JSON (gọi sau khi load level)"""
+        """Khởi tạo tất cả thực thể từ dữ liệu JSON"""
         self.entities.clear()
+        self.enemies.clear() # Xóa danh sách quái cũ
         
         for e in self.entities_data:
             etype = e.get("type")
+            x, y = e.get("x"), e.get("y")
             
-            if etype == "player_spawn":
-                continue  # đã xử lý riêng trong PlayingState
-                
-            elif etype == "goblin":
-                from game.entities.enemy import Goblin  # bạn sẽ tạo file này sau
+            # --- Xử lý các loại Quái vật ---
+            if etype == "goblin":
                 goblin = Goblin(game, e["x"], e["y"])
+                goblin.type = "goblin" # Để playing.py nhận diện được
                 self.entities.append(goblin)
+                self.enemies.append(goblin)
                 
+            elif etype == "skeleton":
+                skeleton = Skeleton(game, e["x"], e["y"])
+                skeleton.type = "skeleton" # Để playing.py nhận diện được
+                self.entities.append(skeleton)
+                self.enemies.append(skeleton)
+
+            elif etype == "fire_bat":
+                fire_bat = FireBat(game, e["x"], e["y"])
+                fire_bat.type = "fire_bat" # Để playing.py nhận diện được
+                self.entities.append(fire_bat)
+                self.enemies.append(fire_bat)
+
+            # --- Xử lý các loại Vật phẩm / Platform ---
             elif etype == "platform":
                 from game.objects.platform import Platform
-                plat = Platform(game, e["x"], e["y"], e.get("w", 128), e.get("h", 32))
+                plat = Platform(game, x, y, e.get("w", 128), e.get("h", 32))
                 self.entities.append(plat)
-                
-            elif etype == "oneway_platform":
-                from game.objects.platform import OneWayPlatform
-                plat = OneWayPlatform(game, e["x"], e["y"], e.get("w", 96), e.get("h", 32))
-                self.entities.append(plat)
-                
-            elif etype == "breakable":
-                from game.objects.breakable import BreakableBox
-                brk = BreakableBox(game, e["x"], e["y"])
-                self.entities.append(brk)
                 
             elif etype == "coin":
                 from game.entities.collectible import Coin
-                coin = Coin(game, e["x"], e["y"], e.get("value", 5))
-                self.entities.append(coin)
-                
-            elif etype == "heart":
-                from game.entities.collectible import Heart
-                heart = Heart(game, e["x"], e["y"])
-                self.entities.append(heart)
-                
-            elif etype == "checkpoint":
-                from game.objects.checkpoint import Checkpoint
-                cp = Checkpoint(game, e["x"], e["y"])
-                self.entities.append(cp)
+                self.entities.append(Coin(game, x, y, e.get("value", 5)))
                 
             elif etype == "mana":
                 from game.entities.collectible import ManaBottle
-                mana = ManaBottle(game, e["x"], e["y"], e.get("value", 25))
-                self.entities.append(mana)
+                self.entities.append(ManaBottle(game, x, y, e.get("value", 25)))
                 
             # Projectile sẽ được thêm động trong skill_a_fire()
+    def spawn_enemy(self, enemy_type: str, x: int, y: int):
+        """
+        Spawn một quái vật tại vị trí (x, y) bất kỳ lúc nào.
+        Trả về đối tượng enemy để có thể thao tác thêm (ví dụ: set HP, velocity...).
+        """
+        from game.entities.enemy import Goblin, Skeleton, FireBat, BossShadowKing
+        
+        enemy = None
+        etype = enemy_type.lower()
+        
+        if etype == "goblin":
+            enemy = Goblin(self.game, x, y)
+            enemy.type = "goblin"
+        elif etype == "skeleton":
+            enemy = Skeleton(self.game, x, y)
+            enemy.type = "skeleton"
+        elif etype in ("fire_bat", "firebat"):
+            enemy = FireBat(self.game, x, y)
+            enemy.type = "fire_bat"
+        elif etype in ("boss", "shadow_king", "boss_shadow_king"):
+            enemy = BossShadowKing(self.game, x, y)
+            enemy.type = "boss"
+        else:
+            print(f"[Level] ❌ Không hỗ trợ spawn enemy loại: {enemy_type}")
+            return None
+        
+        # Thêm vào danh sách quản lý (đã fix bug goblin không vào enemies)
+        self.entities.append(enemy)
+        if hasattr(self, 'enemies') and enemy not in self.enemies:
+            self.enemies.append(enemy)
+        
+        print(f"[Level] Đã spawn {enemy_type} tại ({x}, {y})")
+        return enemy
+    
+    def spawn_enemies(self, enemies_list: list):
+        """
+        Spawn nhiều quái cùng lúc (dùng cho wave, khu vực nguy hiểm...).
+        Ví dụ: spawn_enemies([("goblin", 1400, 900), ("skeleton", 1550, 900)])
+        """
+        spawned = []
+        for etype, x, y in enemies_list:
+            enemy = self.spawn_enemy(etype, x, y)
+            if enemy:
+                spawned.append(enemy)
+        return spawned
+    
+    def is_solid_at(self, x, y):
+        """Kiểm tra có gạch đặc không (cho quái patrol)"""
+        col = int(x // TILE_SIZE)
+        row = int(y // TILE_SIZE)
+        if 0 <= row < len(self.tiles) and 0 <= col < len(self.tiles[row]):
+            return self.tiles[row][col] == 1
+        return False
+
+    def update_entities(self, delta_time):
+        """Update tất cả quái + vật phẩm"""
+        for entity in self.entities[:]:   # copy để an toàn khi quái chết
+            if hasattr(entity, 'alive') and not entity.alive:
+                continue
+            if hasattr(entity, 'update'):
+                entity.update(delta_time, self)
+
+    def render_entities(self, renderer, camera):
+        """Vẽ tất cả entities (quái sẽ hiện ở đây)"""
+        for entity in self.entities:
+            if hasattr(entity, 'alive') and not entity.alive:
+                continue
+            if hasattr(entity, 'render'):
+                entity.render(renderer, camera)

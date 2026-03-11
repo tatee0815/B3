@@ -1,5 +1,6 @@
 import sdl2
 import os
+from game.entities.projectile import Projectile
 from game.level.level import Level
 
 class PlayingState:
@@ -18,7 +19,6 @@ class PlayingState:
         
         # Nếu chọn "Bắt đầu mới" hoặc chưa khởi tạo, tiến hành nạp lại từ đầu
         if not self.is_initialized or force_reset:
-            print("[PlayingState] Đang tiến hành RESET màn chơi...")
             
             # QUAN TRỌNG: Reset dữ liệu trong class Game trước
             if force_reset:
@@ -47,7 +47,6 @@ class PlayingState:
         # Nếu là "Tiếp tục" và đã có player, chỉ cần đưa về checkpoint
         if menu_continue:
             if self.player:
-                print("[PlayingState] Tiếp tục từ Menu: Respawn về Checkpoint.")
                 self.player.respawn(self.player.checkpoint_pos)
                 # Reset camera để tránh bị giật hình
                 if hasattr(self.game, 'camera'):
@@ -55,10 +54,12 @@ class PlayingState:
             return
 
         if self.is_initialized and not force_reset:
-            print("[PlayingState] Tiếp tục tại vị trí hiện tại.")
-            return # Thoát hàm sớm để không chạy logic respawn bên dưới
-
-        # Reset camera để nhìn vào nhân vật ở vị trí mới
+            if hasattr(self.game, 'camera'):
+                # Đặt camera ngay tại tâm player thay vì gọi reset() về 0
+                self.game.camera.x = self.player.rect.x - self.game.camera.width // 2
+                self.game.camera.y = self.player.rect.y - self.game.camera.height // 2
+                # Ràng buộc lại để không vượt biên map ngay từ frame đầu
+                self.game.camera.update(self.player)
         
 
     def update(self, delta_time):
@@ -67,14 +68,51 @@ class PlayingState:
 
         # Player update xử lý di chuyển và va chạm thông qua level.handle_collision
         self.player.update(delta_time, self.level)
+
+        self.level.update_entities(delta_time)
+
+        for enemy in self.level.enemies[:]:
+            if enemy.alive and sdl2.SDL_HasIntersection(self.player.rect, enemy.rect):
+                # Xác định hướng bật lùi
+                knock_dir = -1 if self.player.rect.x < enemy.rect.x else 1
+                self.player.take_damage(enemy.damage, knock_dir)   # ← Gọi hàm mới
+                
+                # Quái cũng bật lùi nhẹ (tăng tính chân thực)
+                enemy.direction *= -1
+                enemy.vel_x = -knock_dir * 4.0
+                enemy.pos_x += enemy.vel_x * 5
         
         # Camera bám theo player
         if hasattr(self.game, 'camera'):
             self.game.camera.update(self.player)
 
+        if self.player.is_attacking:
+            for enemy in self.level.enemies:
+                # Giả sử Enemy có rect và còn sống
+                if enemy.alive :
+                    if sdl2.SDL_HasIntersection(self.player.attack_rect, enemy.rect):
+                        # Gây sát thương cho quái
+                        enemy.take_damage(self.player.attack_damage)
+                        # Kích hoạt bật lùi cho nhân vật
+                        self.player.apply_recoil()
+
         if self.level.check_win(self.player):
             self.is_initialized = False
             self.game.change_state("win")
+
+        projectiles = [e for e in self.level.entities if isinstance(e, Projectile)]
+
+        for proj in projectiles:
+            if not proj.alive: continue
+            for enemy in self.level.enemies:
+                if enemy.alive and sdl2.SDL_HasIntersection(proj.rect, enemy.rect):
+                    # Gây sát thương và đẩy lùi nhẹ quái
+                    enemy.take_damage(proj.damage)
+                    enemy.vel_x = proj.direction * 5.0
+                    
+                    # Đạn chạm quái thì tan biến luôn
+                    proj.die()
+                    break
 
         # if hasattr(self, 'test_checkpoint') and self.player:
         #     self.test_checkpoint.update(self.player)
@@ -86,6 +124,7 @@ class PlayingState:
         
         if self.level:
             self.level.render(renderer, self.game.camera)
+            self.level.render_entities(renderer, self.game.camera)
         if self.player:
             self.player.render(renderer, self.game.camera)
 

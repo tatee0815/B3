@@ -76,7 +76,8 @@ class Collectible(Entity):
             renderer.copy(self.texture, dstrect=dst_rect)
         else:
             # Fallback hình chữ nhật + màu
-            renderer.fill(self.color, dst_rect)
+            # renderer.fill(self.color, dst_rect)
+            pass
 
 
 # ────────────────────────────────────────────────

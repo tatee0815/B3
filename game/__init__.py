@@ -38,7 +38,6 @@ from game.entities.collectible import Collectible, Heart, Coin, ManaBottle
 from .objects.checkpoint import Checkpoint
 
 from .level.level import Level
-from .level.loader import load_level_from_json
 
 from .game import Game
 from .states.playing import PlayingState

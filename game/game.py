@@ -124,6 +124,7 @@ class Game:
         """Quay lại trạng thái chơi mà không gọi on_enter của PlayingState"""
         self.is_paused = False
         self.current_state = self.states["playing"]
+        self.last_time = sdl2.timer.SDL_GetTicks()
 
     def handle_events(self):
         events = sdl2.ext.get_events()
@@ -208,6 +209,7 @@ class Game:
     def run(self):
         clock = sdl2.SDL_GetTicks()
         while self.running:
+            sdl2.SDL_Delay(10)
             new_clock = sdl2.SDL_GetTicks()
             delta_ms = new_clock - clock
             clock = new_clock

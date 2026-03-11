@@ -1,6 +1,6 @@
 import sdl2
 from game.constants import (
-    PLAYER_SPEED, JUMP_FORCE, DOUBLE_JUMP_FORCE,
+    MAX_FALL_SPEED, PLAYER_SPEED, JUMP_FORCE, DOUBLE_JUMP_FORCE,
     GRAVITY, PLAYER_MAX_HP, MANA_MAX, 
     SKILL_A_COST, KEY_BINDINGS_DEFAULT
 )
@@ -17,7 +17,12 @@ class Player(Entity):
         # Chỉ số cơ bản
         self.hp = progress.get("hp", PLAYER_MAX_HP)
         self.mana = progress.get("mana", 50)
+        self.mana_warning_timer = 0
+        self.mana_warning_duration = 1.0  # Thời gian hiển thị cảnh báo thiếu mana (giây)
         self.gold = progress.get("gold", 0)
+        self.invincible_time = 0.0   # Thời gian bất tử (giây)
+        self.invincible_duration = 2.0        # Thời gian bất tử sau khi bị đánh (giây)
+        self.knockback_vel_x = 0.0 # Vận tốc knockback theo trục X (bật lùi)
         
         # Trạng thái di chuyển (Để tránh khựng phím)
         self.moving_left = False
@@ -38,9 +43,16 @@ class Player(Entity):
         
         # Logic Tấn công & Hitbox
         self.is_attacking = False
+        self.attack_damage = 20
         self.attack_timer = 0
         self.ATTACK_DURATION = 0.3
+        self.attack_cooldown_timer = 0
+        self.ATTACK_COOLDOWN = 0.4
         self.attack_rect = sdl2.SDL_Rect(0, 0, 0, 0)
+
+        self.recoil_timer = 0
+        self.recoil_force = 15 # Độ mạnh của lực bật lùi
+
         self.debug_mode = True # Đổi thành False để ẩn khung đỏ khi xong
         
         self.is_respawning = False
@@ -55,6 +67,8 @@ class Player(Entity):
         scancode = event.key.keysym.scancode
         
         if event.type == sdl2.SDL_KEYDOWN:
+            if self.is_dashing:
+                return # Không nhận input mới khi đang dash để tránh xung đột
             if scancode == KEY_BINDINGS_DEFAULT["left"]:
                 self.moving_left = True
                 self.facing_right = False
@@ -90,20 +104,26 @@ class Player(Entity):
 
     def dash(self):
         if self.dash_cooldown <= 0 and not self.is_dashing:
-            self.is_dashing = True
-            self.dash_timer = self.DASH_DURATION
-            self.dash_cooldown = 0.8
+            if self.on_ground or self.can_dash_in_air:
+                self.is_dashing = True
+                self.dash_timer = self.DASH_DURATION
+                self.dash_cooldown = 0.8
+                
+                # Triệt tiêu vận tốc rơi ngay khi bắt đầu lướt để lướt thẳng ngang
+                self.vel_y = 0 
+                
+                if not self.on_ground:
+                    self.can_dash_in_air = False # Đã dùng lượt dash trên không
 
     def melee_attack(self):
-        if not self.is_attacking and not self.is_dashing:
+        if self.attack_cooldown_timer <= 0 and not self.is_dashing:
             self.is_attacking = True
             self.attack_timer = self.ATTACK_DURATION
+            self.attack_cooldown_timer = self.ATTACK_COOLDOWN
             self.state = "attack"
             
             # Tính toán vị trí hitbox gây sát thương
-            attack_width = 40
-            ax = self.rect.x + self.rect.w if self.facing_right else self.rect.x - attack_width
-            self.attack_rect = sdl2.SDL_Rect(ax, self.rect.y, attack_width, self.rect.h)
+            self._update_attack_hitbox()
             
             # Kiểm tra va chạm gây sát thương lên quái
             entities = self.game.states["playing"].level.entities
@@ -113,17 +133,47 @@ class Player(Entity):
                         if hasattr(e, "take_damage"):
                             e.take_damage(20)
 
+    def _update_attack_hitbox(self):
+        """Hàm dùng chung để tính toán vị trí hitbox tấn công"""
+        # Cấu hình: Hẹp (16px) nhưng Xa (65px)
+        attack_range = 65  
+        attack_height = 16 
+        
+        # Tính toán tọa độ X dựa trên hướng nhìn
+        if self.facing_right:
+            ax = self.rect.x + self.rect.w 
+        else:
+            ax = self.rect.x - attack_range
+            
+        # Căn giữa theo trục Y của nhân vật
+        ay = self.rect.y + (self.rect.h // 2) - (attack_height // 2)
+        
+        # Cập nhật trực tiếp vào thuộc tính của object
+        self.attack_rect = sdl2.SDL_Rect(int(ax), int(ay), int(attack_range), int(attack_height))
+                    
+    def apply_recoil(self):
+        """Gọi khi trúng quái vật để tạo lực bật lùi"""
+        self.recoil_timer = 0.15  # Thời gian bật lùi (giây)
+        # Bật lùi ngược hướng nhìn
+        direction = -1 if self.facing_right else 1
+        self.vel_x = direction * 5.0 # Lực bật lùi (điều chỉnh tùy ý)
+        
+        # Hollow Knight style: Chém trúng quái khi đang trên không sẽ reset lượt Dash
+        if not self.on_ground:
+            self.can_dash_in_air = True
+
     def use_skill(self):
         if self.mana >= SKILL_A_COST:
             self.mana -= SKILL_A_COST
             self.skill_a_fire()
         else:
-            print("Không đủ Mana!")
+            self.mana_warning_timer = self.mana_warning_duration
 
     def skill_a_fire(self):
         direction = 1 if self.facing_right else -1
         proj_x = self.rect.x + (self.rect.w if direction > 0 else -32)
-        proj = Projectile(self.game, proj_x, self.rect.centery - 8, direction)
+        center_y = self.rect.y + (self.rect.h // 2)
+        proj = Projectile(self.game, proj_x, center_y - 8, direction)
         self.game.states["playing"].level.entities.append(proj)
 
     def interact(self):
@@ -137,23 +187,46 @@ class Player(Entity):
     def update(self, delta_time, level):
         # 1. Cập nhật các bộ đếm thời gian
         if self.dash_cooldown > 0: self.dash_cooldown -= delta_time
+        if self.recoil_timer > 0: self.recoil_timer -= delta_time
+        if self.attack_cooldown_timer > 0: self.attack_cooldown_timer -= delta_time
+        if self.mana_warning_timer > 0: self.mana_warning_timer -= delta_time
+        
         if self.is_attacking:
             self.attack_timer -= delta_time
-            if self.attack_timer <= 0: self.is_attacking = False
+            if self.attack_timer <= 0: 
+                self.is_attacking = False
+            else:
+                # CẬP NHẬT HITBOX THEO NHÂN VẬT (Tránh bị bỏ lại khi chạy)
+                self._update_attack_hitbox()
 
-        # 2. Xử lý Vận tốc X (Ưu tiên Dash > Attack > Walk)
-        if self.is_dashing:
+        if self.on_ground: self.can_dash_in_air = True
+
+        # 2. Quản lý Vận tốc (PHÂN CẤP ƯU TIÊN DI CHUYỂN)
+        
+        # TRẠNG THÁI 1: Đang bị bật lùi (Recoil) - Khóa điều khiển trái/phải
+        if self.recoil_timer > 0:
+            # vel_x đã được set trong apply_recoil, ta giữ nguyên nó
+            self.vel_y += GRAVITY 
+            
+        # TRẠNG THÁI 2: Đang lướt (Dash) - Khóa trọng lực và điều khiển
+        elif self.is_dashing:
             self.dash_timer -= delta_time
             self.vel_x = (1 if self.facing_right else -1) * self.DASH_SPEED
-            if self.dash_timer <= 0: self.is_dashing = False
-        elif self.is_attacking:
-            self.vel_x = 0
+            self.vel_y = 0 
+            if self.dash_timer <= 0: 
+                self.is_dashing = False
+                self.vel_x = 0
+                
+        # TRẠNG THÁI 3: Bình thường (Chạy, Nhảy, Chém mượt)
         else:
+            # Xử lý di chuyển trái phải
             if self.moving_left: self.vel_x = -PLAYER_SPEED
             elif self.moving_right: self.vel_x = PLAYER_SPEED
             else: self.vel_x = 0
 
-        # 3. Cập nhật vật lý và va chạm môi trường
+        # 3. Giới hạn vật lý và va chạm
+        if self.vel_y > MAX_FALL_SPEED: self.vel_y = MAX_FALL_SPEED
+
         super().update(delta_time, level)
         level.handle_collision(self)
 
@@ -164,9 +237,40 @@ class Player(Entity):
         if self.hp <= 0:
             self.handle_death()
         
-            # 5. Hồi Mana và cập nhật State cho animation
-            self.mana = min(MANA_MAX, self.mana + 5 * delta_time)
-            self._update_state()
+        # 5. Hồi Mana và cập nhật State cho animation
+        self.mana = min(MANA_MAX, self.mana + 5 * delta_time)
+        self._update_state()
+
+        # === XỬ LÝ INVINCIBLE + KNOCKBACK ===
+        if self.invincible_time > 0:
+            self.invincible_time -= delta_time
+        
+        # Giảm dần knockback
+        if abs(self.knockback_vel_x) > 0.1:
+            self.knockback_vel_x *= 0.85
+            self.vel_x = self.knockback_vel_x
+        else:
+            self.knockback_vel_x = 0.0
+
+    
+    def take_damage(self, amount, knockback_dir=1):
+        """Player bị quái đánh - đã tích hợp invincible + knockback"""
+        if self.is_respawning or self.invincible_time > 0:
+            return  # Không nhận sát thương khi đang hồi sinh hoặc bất tử
+        
+        self.hp -= amount
+        print(f"Player take damage! HP còn: {self.hp}")
+        
+        # Bất tử 1 giây
+        self.invincible_time = self.invincible_duration
+        
+        # Knockback (bật lùi)
+        self.knockback_vel_x = knockback_dir * 10.0
+        self.vel_x = self.knockback_vel_x
+        
+        if self.hp <= 0:
+            self.hp = 0
+            self.handle_death()
     
     def handle_death(self):
         """Xử lý tập trung khi nhân vật chết"""
@@ -184,9 +288,10 @@ class Player(Entity):
             self.game.player_progress['total_deaths'] = 1
     
         # 3. Gọi hàm respawn và hồi phục chỉ số
+        self.is_respawning = True
         self.respawn(self.checkpoint_pos)
 
-        self.hp = 100
+        self.hp = PLAYER_MAX_HP
         self.is_respawning = False
 
     def _update_state(self):
@@ -219,6 +324,27 @@ class Player(Entity):
             self.game.camera.reset()
 
     def render(self, renderer, camera):
+        if self.invincible_time > 0:
+            # Nhấp nháy mỗi 100ms
+            if (sdl2.timer.SDL_GetTicks() // 100) % 2 == 0:
+                return # Bỏ qua frame này không vẽ
+        
+        if self.mana_warning_timer > 0:
+            # Tính toán vị trí: Trên đầu nhân vật một chút
+            # Cho chữ bay nhẹ lên trên theo thời gian để sinh động
+            offset_y = (self.mana_warning_duration - self.mana_warning_timer) / 20
+            text_x = self.rect.x - camera.x
+            text_y = self.rect.y - camera.y - 30 - offset_y
+            
+            # Mượn hàm vẽ text từ HUD để đảm bảo dùng đúng font UTM-Netmuc
+            if hasattr(self.game, 'hud'):
+                self.game.hud._draw_text(
+                    renderer, 
+                    "Không đủ Mana!", 
+                    text_x, 
+                    text_y, 
+                    (80, 180, 255) # Màu xanh Mana cho đồng bộ
+                )
         # Ép kiểu int cho tất cả các tham số truyền vào SDL_Rect
         draw_x = int(self.rect.x - camera.x)
         draw_y = int(self.rect.y - camera.y)
@@ -244,13 +370,3 @@ class Player(Entity):
 
     def collides_with(self, other):
         return sdl2.SDL_HasIntersection(self.rect, other.rect)
-
-    def take_damage(self, amount):
-        if self.is_respawning: return # Tránh nhận sát thương khi đang trong quá trình hồi sinh
-        
-        self.hp -= amount
-        print(f"Player take damage! HP còn: {self.hp}")
-        
-        if self.hp <= 0:
-            self.hp = 0 # Tránh HP âm
-            self.handle_death()
