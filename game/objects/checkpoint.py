@@ -12,13 +12,11 @@ class Checkpoint:
         if not self.activated:
             if sdl2.SDL_HasIntersection(self.rect, player.rect):
                 self.activated = True
-                # Lưu vị trí hiện tại của Checkpoint làm điểm hồi sinh mới
-                player.checkpoint_pos = (self.rect.x, self.rect.y - 20) 
-                print(f"[Checkpoint] Đã kích hoạt tại: {player.checkpoint_pos}")
+                player.checkpoint_pos = (self.rect.x, self.rect.y - 20)
 
     def render(self, renderer, camera):
         # Vẽ Checkpoint để test: Màu xanh lam nếu chưa kích hoạt, màu vàng nếu rồi
-        color = (255, 255, 0) if self.activated else (0, 0, 255)
+        color = COLORS["yellow"] if self.activated else COLORS["blue"]
         
         draw_rect = sdl2.SDL_Rect(
             int(self.rect.x - camera.x),

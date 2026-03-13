@@ -52,7 +52,7 @@ class Player(Entity):
         self.attack_rect = sdl2.SDL_Rect(0, 0, 0, 0)
 
         self.recoil_timer = 0
-        self.recoil_force = 15 # Độ mạnh của lực bật lùi
+        self.recoil_force = 5 # Độ mạnh của lực bật lùi
 
         self.debug_mode = True # Đổi thành False để ẩn khung đỏ khi xong
         
@@ -117,6 +117,7 @@ class Player(Entity):
             self.attack_timer = self.ATTACK_DURATION
             self.attack_cooldown_timer = self.ATTACK_COOLDOWN
             self.state = "attack"
+            self.hit_enemies = []
 
     def _update_attack_hitbox(self):
         """Hàm dùng chung để tính toán vị trí hitbox tấn công"""
@@ -137,13 +138,10 @@ class Player(Entity):
         self.attack_rect = sdl2.SDL_Rect(int(ax), int(ay), int(attack_range), int(attack_height))
                     
     def apply_recoil(self):
-        """Gọi khi trúng quái vật để tạo lực bật lùi"""
-        self.recoil_timer = 0.15  # Thời gian bật lùi (giây)
-        # Bật lùi ngược hướng nhìn
+        self.recoil_timer = 0.15 
         direction = -1 if self.facing_right else 1
-        self.vel_x = direction * 5.0 # Lực bật lùi (điều chỉnh tùy ý)
+        self.vel_x = direction * self.recoil_force 
         
-        # Hollow Knight style: Chém trúng quái khi đang trên không sẽ reset lượt Dash
         if not self.on_ground:
             self.can_dash_in_air = True
 
@@ -182,16 +180,24 @@ class Player(Entity):
             self.attack_timer -= delta_time
             if self.attack_timer <= 0:
                 self.is_attacking = False
+                # Reset danh sách khi kết thúc đòn đánh
+                if hasattr(self, 'hit_enemies'): self.hit_enemies = []
             else:
                 self._update_attack_hitbox()
-                # Kiểm tra gây sát thương liên tục trong khi vung kiếm
                 if level:
+                    # Khởi tạo danh sách nếu chưa có
+                    if not hasattr(self, 'hit_enemies'): self.hit_enemies = []
                     for enemy in level.enemies:
-                        if enemy.alive and sdl2.SDL_HasIntersection(self.attack_rect, enemy.rect):
-                            enemy.take_damage(self.attack_damage)
-                            self.apply_recoil() # Bật lùi khi chém trúng
-                            if not self.on_ground:
-                                self.can_dash_in_air = True # Reset dash nếu chém trúng quái trên không
+                        # CHỈ GÂY SÁT THƯƠNG NẾU QUÁI CHƯA BỊ TRÚNG ĐÒN TRONG LƯỢT NÀY
+                        if enemy.alive and enemy not in self.hit_enemies:
+                            if sdl2.SDL_HasIntersection(self.attack_rect, enemy.rect):
+                                k_dir = 1 if self.facing_right else -1
+                                enemy.take_damage(self.attack_damage, knockback_dir=k_dir)
+                                self.hit_enemies.append(enemy) # Đánh dấu đã chém trúng
+                                
+                                self.apply_recoil()
+                                if not self.on_ground:
+                                    self.can_dash_in_air = True
 
         # Hồi lượt dash khi chân chạm đất
         if self.on_ground:
@@ -245,6 +251,25 @@ class Player(Entity):
                 if abs(self.pos_x - old_x) < 0.01 and abs(self.vel_x) > 1:
                     self.is_dashing = False
                     self.vel_x = 0
+
+            for plat in level.platforms:
+                if hasattr(plat, "vel_x"):
+                    # Check va chạm chân với đầu platform
+                    p_bottom = self.rect.y + self.rect.h
+                    if (p_bottom <= plat.rect.y + 5 and 
+                        p_bottom >= plat.rect.y - 5 and
+                        self.rect.x + self.rect.w > plat.rect.x and 
+                        self.rect.x < plat.rect.x + plat.rect.w):
+                        
+                        # Cưỡi lên platform
+                        self.pos_x += plat.vel_x * delta_time
+                        self.pos_y += plat.vel_y * delta_time
+                        self.on_ground = True # Đứng trên platform cũng là on_ground
+                        break
+
+                # Sau đó mới cập nhật rect thực tế
+                self.rect.x = int(self.pos_x)
+                self.rect.y = int(self.pos_y)
 
         # --- 5. KIỂM TRA ĐIỀU KIỆN SỐNG CÒN ---
         # Kiểm tra rơi vực

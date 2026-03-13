@@ -5,7 +5,7 @@ Các đối tượng thu thập (collectible) - item nhặt được từ thùng
 import math
 import sdl2.ext
 
-from game.constants import TILE_SIZE
+from game.constants import TILE_SIZE, COLORS
 from .base import Entity
 
 
@@ -19,6 +19,8 @@ class Collectible(Entity):
 
     def __init__(self, game, x, y, w=24, h=24):
         super().__init__(game, x, y, w, h)
+
+        self.draw_y = float(y)
         
         # Animation lơ lửng (bob up/down)
         self.bob_timer = 0.0
@@ -88,7 +90,7 @@ class Heart(Collectible):
 
     def __init__(self, game, x, y):
         super().__init__(game, x, y, w=24, h=24)
-        self.color = (220, 60, 60, 255)  # đỏ
+        self.color = COLORS["red"]
         self.particle_color = (255, 80, 80, 255)
 
     def on_collect(self, player):
@@ -102,7 +104,7 @@ class Coin(Collectible):
     def __init__(self, game, x, y, value=1):
         super().__init__(game, x, y, w=20, h=20)
         self.value = value
-        self.color = (240, 220, 60, 255)  # vàng
+        self.color = COLORS["yellow"]  
         self.particle_color = (255, 240, 100, 255)
         self.bob_amplitude = 5.0
         self.bob_frequency = 4.0  # lắc nhanh hơn tí
@@ -118,7 +120,7 @@ class ManaBottle(Collectible):
     def __init__(self, game, x, y, value=25):
         super().__init__(game, x, y, w=24, h=28)
         self.value = value
-        self.color = (80, 180, 255, 255)  # xanh dương
+        self.color = COLORS["mana_bar"]
         self.particle_color = (120, 220, 255, 255)
 
     def on_collect(self, player):

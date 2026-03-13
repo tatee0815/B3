@@ -73,10 +73,16 @@ class Level:
 
         for row in range(start_row, end_row + 1):
             for col in range(start_col, end_col + 1):
-                if self.tiles[row][col] == 1:
+                tile_id = self.tiles[row][col]
+                if tile_id == 1 or tile_id == 2:
                     tile_rect = sdl2.SDL_Rect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE)
                     if sdl2.SDL_HasIntersection(p, tile_rect):
                         self._resolve_collision(player, tile_rect)
+                elif tile_id == 3: # Đụng trúng Lava
+                    tile_rect = sdl2.SDL_Rect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+                    if sdl2.SDL_HasIntersection(p, tile_rect):
+                        if player.invincible_time <= 0:
+                            player.take_damage(20, -1 if player.vel_x > 0 else 1)
 
     def _resolve_collision(self, player, tile):
         p = player.rect
@@ -148,6 +154,9 @@ class Level:
                         elif tile_id == 2: # Nền tảng
                             sdl2.SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255)
                             sdl2.SDL_RenderFillRect(renderer, dst_rect)
+                        elif tile_id == 3: # Dung nham (LAVA)
+                            sdl2.SDL_SetRenderDrawColor(renderer, 255, 69, 0, 255) # Màu đỏ cam rực
+                            sdl2.SDL_RenderFillRect(renderer, dst_rect)
         self.render_entities(renderer, camera)
 
     def get_spawn_position(self):
@@ -179,7 +188,7 @@ class Level:
                 self.entities.append(skeleton)
                 self.enemies.append(skeleton)
 
-            elif etype == "fire_bat":
+            elif etype in ("fire_bat", "firebat"):
                 fire_bat = FireBat(game, e["x"], e["y"])
                 fire_bat.type = "fire_bat" # Để playing.py nhận diện được
                 self.entities.append(fire_bat)
@@ -208,9 +217,16 @@ class Level:
                 
             elif etype == "mana":
                 from game.entities.collectible import ManaBottle
-                self.entities.append(ManaBottle(game, x, y, e.get("value", 25)))
+                mana = ManaBottle(game, x, y, e.get("value", 25))
+                self.entities.append(mana)
+
+            elif etype == "checkpoint":
+                from game.objects.checkpoint import Checkpoint
+                cp = Checkpoint(game, x, y)
+                self.entities.append(cp)
                 
             # Projectile sẽ được thêm động trong skill_a_fire()
+    
     def spawn_enemy(self, enemy_type: str, x: int, y: int):
         """
         Spawn một quái vật tại vị trí (x, y) bất kỳ lúc nào.
@@ -262,15 +278,32 @@ class Level:
         col = int(x // TILE_SIZE)
         row = int(y // TILE_SIZE)
         if 0 <= row < len(self.tiles) and 0 <= col < len(self.tiles[row]):
-            return self.tiles[row][col] == 1
+            tile_id = self.tiles[row][col]
+            return tile_id in [1, 2]
         return False
 
     def update_entities(self, delta_time):
-        """Update tất cả quái + vật phẩm"""
-        for entity in self.entities[:]:   # copy để an toàn khi quái chết
+        # 1. Update Platform trước (Để logic cưỡi platform mượt hơn)
+        for plat in self.platforms:
+            plat.update(delta_time)
+
+        # 2. Update các thực thể khác
+        from game.objects.checkpoint import Checkpoint # Import để check loại
+
+        for entity in self.entities[:]:
             if hasattr(entity, 'alive') and not entity.alive:
                 continue
-            if hasattr(entity, 'update'):
+            
+            # --- ĐOẠN FIX CHO CHECKPOINT ---
+            if isinstance(entity, Checkpoint):
+                # Vì file checkpoint.py của fen nhận player, ta lấy player từ state playing
+                player = self.game.states["playing"].player
+                if player:
+                    entity.update(player) 
+            # -------------------------------
+            
+            elif hasattr(entity, 'update'):
+                # Các thực thể khác như Enemy, Coin, Mana vẫn dùng delta_time và level
                 entity.update(delta_time, self)
 
     def render_entities(self, renderer, camera):

@@ -1,6 +1,6 @@
 import sdl2
 from .base import Entity
-from game.constants import GRAVITY, TILE_SIZE
+from game.constants import GRAVITY, TILE_SIZE, COLORS
 
 MANA_PER_KILL = 5
 
@@ -11,204 +11,179 @@ class Enemy(Entity):
         self.damage = damage
         self.patrol_speed = 1.5
         self.direction = 1
-        self.color = (255, 0, 0, 255)
+        self.color = [200, 50, 50, 255]
         self.alive = True
         
-        # === PHYSICS ===
-        self.vel_x = 0.0
-        self.vel_y = 0.0
-        self.on_ground = False
-        self.pos_x = float(x)
-        self.pos_y = float(y)
-        self.rect.x = x
-        self.rect.y = y
-        
-        self.is_flying = False  # ← Quan trọng: mặc định là quái đi bộ
+        # === STATUS & PHYSICS ===
+        self.knockback_timer = 0.0
+        self.is_chasing = False
+        self.is_flying = False 
 
     def update(self, delta_time, level):
         if not self.alive: return
 
-        playing_state = self.game.states.get("playing")
-        player = playing_state.player if playing_state else None
-
-        # === LOGIC AI NÂNG CAO ===
-        should_chase = False
-        if player:
-            dist_x = player.rect.x - self.rect.x
-            dist_y = player.rect.y - self.rect.y
-            distance = (dist_x**2 + dist_y**2)**0.5
-
-            # Tầm nhìn (Quái bay nhìn xa hơn)
-            view_dist = 400 if self.is_flying else 250
-            # Khoảng cách để quái "mất dấu" (Hủy chase)
-            lose_dist = view_dist + 150 
-
-            # Kiểm tra điều kiện bắt đầu đuổi: Trong tầm mắt + Nhìn thấy trực tiếp
-            if distance < view_dist:
-                if self._has_line_of_sight(player, level):
-                    should_chase = True
-            
-            # Duy trì truy đuổi: Nếu đang đuổi mà player chưa chạy quá xa (lose_dist)
-            elif distance < lose_dist and getattr(self, 'is_chasing', False):
-                should_chase = True
-
-        if should_chase:
-            self.is_chasing = True
-            self._chase_player(player)
+        # 1. XỬ LÝ KNOCKBACK (Ưu tiên cao nhất, chặn AI)
+        if self.knockback_timer > 0:
+            self.knockback_timer -= delta_time
         else:
-            self.is_chasing = False
-            if self.is_flying: self.vel_y = 0 # Quái bay ngừng bay lên/xuống khi mất dấu
-            self._patrol_ai(level)
+            # 2. LOGIC AI (Chỉ chạy khi không bị bật lùi)
+            playing_state = self.game.states.get("playing")
+            player = playing_state.player if playing_state else None
+            self._update_ai_state(player, level)
 
-        # === VẬT LÝ ===
-        # Trọng lực chỉ cho quái đi bộ
+        # 3. VẬT LÝ & TRỌNG LỰC
         if not self.is_flying:
             self.vel_y += GRAVITY * delta_time * 60
-        
-        # Di chuyển Y và X (Giữ nguyên logic resolve_collision của bạn)
+            if self.vel_y > 12: self.vel_y = 12
+
+        # 4. THỰC THI DI CHUYỂN & CHECK VA CHẠM (Trục Y trước X sau)
         self.pos_y += self.vel_y * delta_time * 60
         self.rect.y = int(self.pos_y)
         self._resolve_collision(level, is_y=True)
 
-        # Tốc độ x1.5 khi đang đuổi theo
-        current_speed = self.patrol_speed * 1.5 if getattr(self, 'is_chasing', False) else self.patrol_speed
-        self.vel_x = current_speed * self.direction
-        
         self.pos_x += self.vel_x * delta_time * 60
         self.rect.x = int(self.pos_x)
         self._resolve_collision(level, is_y=False)
 
+    def _update_ai_state(self, player, level):
+        self.is_chasing = False
+        if not player: return
+
+        # 1. Tính toán vị trí tâm
+        s_cx, s_cy = self.rect.x + self.rect.w//2, self.rect.y + self.rect.h//2
+        p_cx, p_cy = player.rect.x + player.rect.w//2, player.rect.y + player.rect.h//2
+
+        dx, dy = p_cx - s_cx, p_cy - s_cy
+        dist_sq = dx**2 + dy**2
+        
+        view_dist = 400 if self.is_flying else 250
+        lose_dist = view_dist + 150
+
+        # 2. KIỂM TRA GÓC NHÌN (Mới)
+        # Quái chỉ thấy nếu player ở trong tầm nhìn (ví dụ: lệch Y không quá 100px)
+        # Và player phải ở phía trước hướng mặt của quái (direction)
+        in_fov = False
+        if dist_sq < view_dist**2:
+            # Check chiều dọc (không cho quái thấy quá xa phía dưới/trên)
+            vertical_limit = 200 if self.is_flying else 80 
+            if abs(dy) < vertical_limit:
+                # Check hướng mặt: dx và direction phải cùng dấu (cùng bên trái hoặc cùng bên phải)
+                if (dx > 0 and self.direction > 0) or (dx < 0 and self.direction < 0):
+                    in_fov = True
+
+        # 3. QUYẾT ĐỊNH ĐUỔI
+        # Nếu đang trong tầm nhìn + thấy trực tiếp -> Đuổi
+        if in_fov and self._has_line_of_sight(player, level):
+            self.is_chasing = True
+        # Nếu đã đang đuổi rồi thì cho phép "mất dấu" khó hơn (không cần check FOV, chỉ cần distance)
+        elif getattr(self, 'is_chasing', False) and dist_sq < lose_dist**2:
+            self.is_chasing = True
+
+        # 4. THỰC THI DI CHUYỂN
+        if self.is_chasing:
+            self.direction = 1 if dx > 0 else -1
+            self.vel_x = (self.patrol_speed * 1.5) * self.direction
+            if self.is_flying:
+                self.vel_y = self.patrol_speed * (1 if dy > 0 else -1) if abs(dy) > 10 else 0
+        else:
+            if self.is_flying: self.vel_y = 0
+            self.vel_x = self.patrol_speed * self.direction
+            self._patrol_ai(level)
+
     def _has_line_of_sight(self, player, level):
-        """Kiểm tra xem có tường (tile == 1) giữa Quái và Player không"""
-        # Tự tính toán center x và center y
+        """Check 3 điểm dọc đường nối để xem có tường chắn không"""
         x1 = self.rect.x + (self.rect.w // 2)
         y1 = self.rect.y + (self.rect.h // 2)
-        
         x2 = player.rect.x + (player.rect.w // 2)
         y2 = player.rect.y + (player.rect.h // 2)
-        
-        # Kiểm tra 5 điểm dọc theo đường thẳng nối quái và người chơi
-        for i in range(1, 6):
-            check_x = x1 + (x2 - x1) * (i / 5)
-            check_y = y1 + (y2 - y1) * (i / 5)
-            if level.is_solid_at(check_x, check_y):
-                return False # Có tường chắn
+
+        for i in range(1, 4):
+            if level.is_solid_at(x1 + (x2 - x1) * (i / 3), y1 + (y2 - y1) * (i / 3)):
+                return False
         return True
-    
-    def _chase_player(self, player):
-        """Đuổi theo Player: X cho mọi loại, Y chỉ cho quái bay"""
-        # Hướng X
-        self.direction = 1 if player.rect.x > self.rect.x else -1
-
-        # Hướng Y (Chỉ dành cho FireBat hoặc quái bay)
-        if self.is_flying:
-            y_diff = player.rect.y - self.rect.y
-            if abs(y_diff) > 10: # Chỉ di chuyển nếu lệch quá 10 pixel
-                self.vel_y = self.patrol_speed * (1 if y_diff > 0 else -1)
-            else:
-                self.vel_y = 0
-
-    def _resolve_collision(self, level, is_y: bool):
-        start_col = max(0, self.rect.x // TILE_SIZE)
-        end_col = min(level.width - 1, (self.rect.x + self.rect.w) // TILE_SIZE)
-        start_row = max(0, self.rect.y // TILE_SIZE)
-        end_row = min(level.height - 1, (self.rect.y + self.rect.h) // TILE_SIZE)
-
-        for row in range(start_row, end_row + 1):
-            for col in range(start_col, end_col + 1):
-                if level.tiles[row][col] == 1:
-                    tile = sdl2.SDL_Rect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE)
-                    if sdl2.SDL_HasIntersection(self.rect, tile):
-                        if is_y and not self.is_flying:
-                            if self.vel_y > 0 and self.rect.y < tile.y:
-                                self.rect.y = tile.y - self.rect.h
-                                self.pos_y = float(self.rect.y)
-                                self.vel_y = 0
-                                self.on_ground = True
-                            elif self.vel_y < 0 and self.rect.y > tile.y:
-                                self.rect.y = tile.y + tile.h
-                                self.pos_y = float(self.rect.y)
-                                self.vel_y = 0
-                        else:
-                            # Va chạm ngang → quay đầu
-                            if self.vel_x > 0 and self.rect.x < tile.x:
-                                self.rect.x = tile.x - self.rect.w
-                                self.pos_x = float(self.rect.x)
-                                self.direction *= -1
-                            elif self.vel_x < 0 and self.rect.x > tile.x:
-                                self.rect.x = tile.x + tile.w
-                                self.pos_x = float(self.rect.x)
-                                self.direction *= -1
 
     def _patrol_ai(self, level):
-        if self.rect.x <= 0 or (self.rect.x + self.rect.w) >= level.pixel_width:
-            self.direction *= -1
-            return
-    
-        ahead_x = self.rect.x + (self.rect.w if self.direction > 0 else 0) + (self.direction * 15)
-        ahead_y = self.rect.y + 16
-        if level.is_solid_at(ahead_x, ahead_y):
+        """Logic đi tuần cơ bản và quay đầu khi gặp vực/tường"""
+        # Check tường phía trước
+        ahead_x = self.rect.x + (self.rect.w if self.direction > 0 else 0) + (self.direction * 5)
+        if level.is_solid_at(ahead_x, self.rect.y + 5):
             self.direction *= -1
             return
 
-        # Chỉ kiểm tra vực nếu là quái đi bộ
+        # Check vực (chỉ quái đi bộ)
         if not self.is_flying:
-            ledge_x = self.rect.x + (self.rect.w // 2) + (self.rect.w * self.direction)
-            ledge_y = self.rect.y + self.rect.h + 8
-            if not level.is_solid_at(ledge_x, ledge_y):
+            ledge_x = self.rect.x + (self.rect.w // 2) + (self.rect.w // 2 * self.direction)
+            if not level.is_solid_at(ledge_x, self.rect.y + self.rect.h + 5):
                 self.direction *= -1
 
-    def take_damage(self, amount):
+    def take_damage(self, amount, knockback_dir=0):
+        if not self.alive: return
         self.hp -= amount
-        if self.hp <= 0:
-            self.die()
+        if knockback_dir != 0:
+            self.knockback_timer = 0.15
+            self.vel_x = knockback_dir * 4.0 # Lực đẩy lùi
+            self.vel_y = -2.0 # Nảy nhẹ lên cho đẹp
+        
+        if self.hp <= 0: self.die()
 
     def die(self):
         self.alive = False
         playing_state = self.game.states.get("playing")
-        if playing_state and playing_state.player:
-            player = playing_state.player
-            player.mana = min(player.mana + MANA_PER_KILL, 100)
-            player.gold += 5
-        
-        level = self.game.states["playing"].level
+        if not playing_state: return
+        playing_state.player.mana = min(100, playing_state.player.mana + MANA_PER_KILL)
+
+        level = playing_state.level
         if self in level.entities:
             level.entities.remove(self)
         if hasattr(level, "enemies") and self in level.enemies:
             level.enemies.remove(self)
 
+    def _resolve_collision(self, level, is_y):
+        """Xử lý va chạm để không xuyên tường"""
+        # Logic tối giản: Nếu va chạm gạch (id=1), đẩy lùi rect lại
+        for row in range(self.rect.y // TILE_SIZE, (self.rect.y + self.rect.h) // TILE_SIZE + 1):
+            for col in range(self.rect.x // TILE_SIZE, (self.rect.x + self.rect.w) // TILE_SIZE + 1):
+                if 0 <= row < len(level.tiles) and 0 <= col < len(level.tiles[0]):
+                    if level.tiles[row][col] == 1:
+                        tile_rect = sdl2.SDL_Rect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+                        if sdl2.SDL_HasIntersection(self.rect, tile_rect):
+                            if is_y:
+                                if self.vel_y > 0: self.rect.y = tile_rect.y - self.rect.h
+                                elif self.vel_y < 0: self.rect.y = tile_rect.y + TILE_SIZE
+                                self.pos_y = float(self.rect.y)
+                                self.vel_y = 0
+                            else:
+                                if self.vel_x > 0: self.rect.x = tile_rect.x - self.rect.w
+                                elif self.vel_x < 0: self.rect.x = tile_rect.x + TILE_SIZE
+                                self.pos_x = float(self.rect.x)
+                                self.vel_x = 0
+                                if self.knockback_timer <= 0: self.direction *= -1
+
     def render(self, renderer, camera):
-        if not self.alive:
-            return
-        draw_x = int(self.rect.x - camera.x)
-        draw_y = int(self.rect.y - camera.y)
-        draw_rect = sdl2.SDL_Rect(draw_x, draw_y, self.rect.w, self.rect.h)
+        if not self.alive: return
+        draw_rect = sdl2.SDL_Rect(int(self.rect.x - camera.x), int(self.rect.y - camera.y), self.rect.w, self.rect.h)
         sdl2.SDL_SetRenderDrawColor(renderer, *self.color)
         sdl2.SDL_RenderFillRect(renderer, draw_rect)
 
-
-# ==================== CÁC CLASS CON (GIỮ NGUYÊN + CHỈ THÊM 1 DÒNG CHO FIREBAT) ====================
+# ==================== CÁC CLASS CON ====================
 class Goblin(Enemy):
     def __init__(self, game, x, y):
         super().__init__(game, x, y, hp=25, damage=1)
         self.patrol_speed = 1.2
-        self.color = (50, 200, 50, 255)
-
+        self.color = COLORS["green"]
 
 class Skeleton(Enemy):
     def __init__(self, game, x, y):
         super().__init__(game, x, y, hp=40, damage=1)
         self.patrol_speed = 0.8
-        self.color = (200, 200, 200, 255)
-
+        self.color = COLORS["white"]
 
 class FireBat(Enemy):
     def __init__(self, game, x, y):
-        super().__init__(game, x, y, hp=20, damage=1)
-        self.patrol_speed = 2.5
+        super().__init__(game, x, y, hp=15, damage=1)
+        self.is_flying = True
+        self.patrol_speed = 2.0
         self.color = (255, 100, 0, 255)
-        self.is_flying = True   # ← DÒNG QUAN TRỌNG: khiến FireBat bay được!
-
 
 class BossShadowKing(Enemy):
     def __init__(self, game, x, y):

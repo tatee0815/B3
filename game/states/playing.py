@@ -14,8 +14,9 @@ class PlayingState:
     def on_enter(self, **kwargs):
         force_reset = kwargs.get("reset", False)
         menu_continue = kwargs.get("menu_continue", False)
+
         # from game.objects.checkpoint import Checkpoint
-        # self.test_checkpoint = Checkpoint(self.game, 500, 350)
+        # self.test_checkpoint = Checkpoint(self.game, 500, 1000)
         
         # Nếu chọn "Bắt đầu mới" hoặc chưa khởi tạo, tiến hành nạp lại từ đầu
         if not self.is_initialized or force_reset:
@@ -61,7 +62,6 @@ class PlayingState:
                 # Ràng buộc lại để không vượt biên map ngay từ frame đầu
                 self.game.camera.update(self.player)
         
-
     def update(self, delta_time):
         if not self.player or not self.level:
             return
@@ -102,19 +102,23 @@ class PlayingState:
         if hasattr(self.game, 'camera'):
             self.game.camera.update(self.player)
 
-        if self.player.is_attacking:
-            for enemy in self.level.enemies:
-                # Giả sử Enemy có rect và còn sống
-                if enemy.alive :
-                    if sdl2.SDL_HasIntersection(self.player.attack_rect, enemy.rect):
-                        # Gây sát thương cho quái
-                        enemy.take_damage(self.player.attack_damage)
-                        # Kích hoạt bật lùi cho nhân vật
-                        self.player.apply_recoil()
-
         if self.level.check_win(self.player):
-            self.is_initialized = False
-            self.game.change_state("win")
+            current_lv = self.game.player_progress.get("current_level", "level1_forest")
+            
+            if current_lv == "level1_forest":
+                print(">>> Chuyển sang Level 2: Hang Đá Lửa")
+                # 1. Cập nhật tên level mới vào progress
+                self.game.player_progress["current_level"] = "level2_lava"
+                
+                # 2. Đánh dấu để on_enter nạp lại level
+                self.is_initialized = False 
+                
+                # 3. Gọi chuyển state nhưng KHÔNG dùng reset=True (vì sẽ bị reset về Level 1)
+                self.game.change_state("playing", reset=False)
+            else:
+                # Nếu không còn level nào tiếp theo thì mới thắng game
+                self.is_initialized = False
+                self.game.change_state("win")
 
         projectiles = [e for e in self.level.entities if isinstance(e, Projectile)]
 
