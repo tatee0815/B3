@@ -14,11 +14,16 @@ class SettingState:
         self.remap_index = -1       
 
         self.options = [
+            "Độ phân giải",
             "Âm lượng nhạc",
             "Âm lượng hiệu ứng",
             "Tùy chỉnh phím",
             "Quay lại"
         ]
+
+        # Danh sách các độ phân giải hỗ trợ
+        self.resolutions = [(1280, 720), (1600, 900), (1920, 1080)]
+        self.res_index = 0
 
         self.music_volume = 70
         self.sfx_volume = 85
@@ -45,6 +50,9 @@ class SettingState:
                                 KEY_BINDINGS_DEFAULT[k] = int(saved_controls[k])
             except : pass
 
+        res = self.resolutions[self.res_index]
+        self.game.set_resolution(res[0], res[1])
+
     def _save_settings(self):
         os.makedirs("config", exist_ok=True)
         # Tạo bản sao của controls nhưng đảm bảo giá trị là số nguyên
@@ -53,6 +61,7 @@ class SettingState:
             controls_to_save[k] = int(v) # Ép kiểu về số nguyên để lưu JSON chuẩn
 
         data = {
+            "res_index": self.res_index,
             "music_volume": self.music_volume,
             "sfx_volume": self.sfx_volume,
             "controls": controls_to_save
@@ -62,8 +71,6 @@ class SettingState:
 
     def handle_event(self, event):
         if event.type != sdl2.SDL_KEYDOWN: return
-        
-        # Chuyển sang dùng scancode để đồng bộ và ổn định hơn
         scancode = event.key.keysym.scancode
 
         # 1. TRẠNG THÁI "remap": Đang chờ nhấn phím mới để gán
@@ -88,25 +95,23 @@ class SettingState:
                 self.selected = (self.selected + 1) % 9
 
         # 3. ĐIỀU HƯỚNG TRONG "main" (Menu Cài đặt chính)
-        else:
+        else: # self.mode == "main"
             if scancode == sdl2.SDL_SCANCODE_UP:
                 self.selected = (self.selected - 1) % len(self.options)
             elif scancode == sdl2.SDL_SCANCODE_DOWN:
                 self.selected = (self.selected + 1) % len(self.options)
-            
-            # Điều chỉnh âm lượng (Chỉ dùng mũi tên Trái/Phải)
             elif scancode == sdl2.SDL_SCANCODE_LEFT:
-                self._adjust_value(-5)
+                self._adjust_value(-1) # Giảm âm lượng hoặc lùi độ phân giải
             elif scancode == sdl2.SDL_SCANCODE_RIGHT:
-                self._adjust_value(5)
+                self._adjust_value(1)  # Tăng âm lượng hoặc tiến độ phân giải
 
         # 4. XỬ LÝ CHỌN (Xác nhận dùng Enter, Z hoặc Space)
         if scancode in (sdl2.SDL_SCANCODE_RETURN, sdl2.SDL_SCANCODE_Z, sdl2.SDL_SCANCODE_SPACE):
             if self.mode == "main":
-                if self.selected == 2: # Chọn mục "Tùy chỉnh phím"
+                if self.selected == 3: # Chọn mục "Tùy chỉnh phím"
                     self.mode = "sub_menu"
                     self.selected = 0 
-                elif self.selected == 3: # Nút "Quay lại" trong menu chính
+                elif self.selected == 4: # Nút "Quay lại" trong menu chính
                     self.game.change_state("menu")
             elif self.mode == "sub_menu":
                 if self.selected == 8: # Chọn nút "Mặc định"
@@ -119,7 +124,7 @@ class SettingState:
         elif scancode == sdl2.SDL_SCANCODE_ESCAPE:
             if self.mode == "sub_menu":
                 self.mode = "main"
-                self.selected = 2 # Quay về đúng mục "Tùy chỉnh phím" ở menu chính
+                self.selected = 3  # Quay về đúng mục "Tùy chỉnh phím" ở menu chính
             else:
                 self.game.change_state("menu")
 
@@ -141,15 +146,20 @@ class SettingState:
         self._save_settings()
 
     def _adjust_value(self, delta):
-        if self.selected == 0: self.music_volume = max(0, min(100, self.music_volume + delta))
-        elif self.selected == 1: self.sfx_volume = max(0, min(100, self.sfx_volume + delta))
-
-    def _select_option(self):
-        if self.selected == 2:
-            self.mode = "remap"
-            self.remap_index = 0
-        elif self.selected == 3:
-            self.game.change_state("menu")
+        # Chọn độ phân giải (Bấm trái/phải sẽ áp dụng màn hình ngay lập tức)
+        if self.selected == 0: 
+            if delta > 0: self.res_index = (self.res_index + 1) % len(self.resolutions)
+            else: self.res_index = (self.res_index - 1) % len(self.resolutions)
+            
+            res = self.resolutions[self.res_index]
+            self.game.set_resolution(res[0], res[1])
+            
+        elif self.selected == 1: 
+            amt = delta * 5 # Tăng/giảm 5%
+            self.music_volume = max(0, min(100, self.music_volume + amt))
+        elif self.selected == 2: 
+            amt = delta * 5
+            self.sfx_volume = max(0, min(100, self.sfx_volume + amt))
 
     def update(self, delta_time): pass
 
@@ -185,7 +195,7 @@ class SettingState:
 
     def _render_main_menu(self, renderer):
         """Vẽ menu cài đặt chính 1 cột dọc"""
-        y = 180
+        y = 150
         for i, opt in enumerate(self.options):
             is_sel = (i == self.selected)
             rect = sdl2.SDL_Rect(SCREEN_WIDTH // 2 - 220, y, 440, 70)
@@ -202,8 +212,11 @@ class SettingState:
 
             # Hiển thị giá trị cụ thể cho âm lượng
             display_text = opt
-            if i == 0: display_text += f": {self.music_volume}%"
-            elif i == 1: display_text += f": {self.sfx_volume}%"
+            if i == 0: 
+                res = self.resolutions[self.res_index]
+                display_text += f": {res[0]}x{res[1]}"
+            if i == 1: display_text += f": {self.music_volume}%"
+            elif i == 2: display_text += f": {self.sfx_volume}%"
 
             self.draw_text(display_text, SCREEN_WIDTH // 2, y + 18, text_color)
             y += 85
@@ -261,7 +274,6 @@ class SettingState:
             if self.mode == "remap" and index == self.remap_index:
                 val_str = "< Chờ... >"
             else:
-                # SỬA TẠI ĐÂY: Sử dụng SDL_GetScancodeName thay vì SDL_GetKeyName
                 val_str = sdl2.SDL_GetScancodeName(scancode).decode('utf-8')
             
             display_text = f"{name}: {val_str}"

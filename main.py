@@ -8,7 +8,6 @@ main.py - Điểm khởi động chính của game Hiệp Sĩ Kiếm Huyền Tho
 
 import sys
 import sdl2
-import sdl2.ext
 
 # Import từ package game (đã được định nghĩa trong game/__init__.py)
 from game import GAME_TITLE, SCREEN_WIDTH, SCREEN_HEIGHT, KnightQuestGame
@@ -38,7 +37,7 @@ def main():
         sdl2.SDL_WINDOWPOS_CENTERED,
         sdl2.SDL_WINDOWPOS_CENTERED,
         SCREEN_WIDTH, SCREEN_HEIGHT,
-        sdl2.SDL_WINDOW_SHOWN | sdl2.SDL_WINDOW_ALLOW_HIGHDPI | sdl2.SDL_WINDOW_RESIZABLE  # ← thêm dòng này
+        sdl2.SDL_WINDOW_SHOWN | sdl2.SDL_WINDOW_ALLOW_HIGHDPI # ← thêm dòng này
     )
 
     if not window:

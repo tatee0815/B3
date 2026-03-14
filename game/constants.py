@@ -15,7 +15,6 @@ FPS_FRAME_TIME_MS     = 1000 // FPS_TARGET   # ~16ms
 
 # Có thể bật fullscreen sau này
 FULLSCREEN            = False
-WINDOW_RESIZABLE      = True
 
 # -------------------------------
 # Vật lý & chuyển động

@@ -126,26 +126,29 @@ class Game:
         self.current_state = self.states["playing"]
         self.last_time = sdl2.timer.SDL_GetTicks()
 
+    def set_resolution(self, width, height):
+        """Thay đổi kích thước cửa sổ và cập nhật scale"""
+        self.current_width = width
+        self.current_height = height
+        
+        # 1. Đổi kích thước cửa sổ thật
+        sdl2.SDL_SetWindowSize(self.window, width, height)
+        # 2. Căn giữa cửa sổ ra giữa màn hình máy tính
+        sdl2.SDL_SetWindowPosition(self.window, sdl2.SDL_WINDOWPOS_CENTERED, sdl2.SDL_WINDOWPOS_CENTERED)
+        
+        # 3. Tính lại Scale dựa trên kích thước gốc (1280x720)
+        self.scale_x = self.current_width / self.logical_width
+        self.scale_y = self.current_height / self.logical_height
+        
+        # 4. Camera LUÔN giữ kích thước Logical
+        self.camera.width = self.logical_width
+        self.camera.height = self.logical_height
+
     def handle_events(self):
         events = sdl2.ext.get_events()
         for event in events:
             if event.type == sdl2.SDL_QUIT:
                 self.running = False
-            elif event.type == sdl2.SDL_WINDOWEVENT:
-                if event.window.event == sdl2.SDL_WINDOWEVENT_RESIZED:
-                    # Cập nhật kích thước thực tế chính xác từ sự kiện
-                    self.current_width = event.window.data1
-                    self.current_height = event.window.data2
-                    
-                    # Tính toán scale chỉ để các state dùng nếu cần, 
-                    # không áp dụng vào SDL_RenderSetScale nữa
-                    self.scale_x = self.current_width / self.logical_width
-                    self.scale_y = self.current_height / self.logical_height
-                    
-                    # Cập nhật camera theo kích thước thực
-                    self.camera.width = self.logical_width
-                    self.camera.height = self.logical_height
-
             if event.type == sdl2.SDL_KEYDOWN:
                 if event.key.keysym.scancode == sdl2.SDL_SCANCODE_ESCAPE:
                     if self.current_state.name == "playing":
@@ -192,7 +195,7 @@ class Game:
         # Xử lý Render đặc biệt cho Pause (vẽ Playing làm nền)
         if self.current_state.name == "pause":
             self.states["playing"].render(self.renderer) # Vẽ game đang chơi bên dưới
-            sdl2.SDL_RenderSetScale(self.renderer, 1.0, 1.0)
+            # sdl2.SDL_RenderSetScale(self.renderer, 1.0, 1.0)
             self.states["pause"].render(self.renderer)
         else:
             self.current_state.render(self.renderer)

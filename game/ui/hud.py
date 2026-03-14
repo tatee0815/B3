@@ -4,7 +4,7 @@ HUD hoàn chỉnh - Scale mượt theo cửa sổ, chữ tiếng Việt rõ nét
 
 import sdl2
 import sdl2.sdlttf as ttf
-from game.constants import PLAYER_MAX_HP, MANA_MAX, MAX_LIVES, COLORS
+from game.constants import PLAYER_MAX_HP, MANA_MAX, MAX_LIVES, COLORS, SCREEN_HEIGHT
 
 
 class HUD:
@@ -19,39 +19,34 @@ class HUD:
 
     def render(self, renderer):
         player = self.game.states["playing"].player
-        if not player:
-            return
+        if not player: return
 
-        s = self.game.hud_scale                      # scale HUD động
-        p = int(20 * s)                              # padding
+        p = 20 # Padding khoảng cách lề
 
-        # ==================== HP (tim) ====================
-        heart_size = int(34 * s)
+        # ==================== HP (Tim) ====================
+        heart_size = 34
         for i in range(PLAYER_MAX_HP):
             color = COLORS["red"] if i < player.hp else COLORS["gray"]
             sdl2.SDL_SetRenderDrawColor(renderer, *color)
-            rect = sdl2.SDL_Rect(p + i * int(42 * s), p, heart_size, heart_size)
+            rect = sdl2.SDL_Rect(p + i * 42, p, heart_size, heart_size)
             sdl2.SDL_RenderFillRect(renderer, rect)
 
-        # ==================== Mana Bar ====================
-        mana_x = int(self.game.current_width * s - p - 220 * s)
-        mana_y = p
-        bar_w = int(200 * s)
-        bar_h = int(22 * s)
+        # ==================== Mana (Thanh) ====================
+        mana_w = 200
+        bar_h = 16
+        mana_x = p
+        mana_y = p + heart_size + 10
 
-        # Nền bar
-        sdl2.SDL_SetRenderDrawColor(renderer, 40, 60, 100, 180)
-        sdl2.SDL_RenderFillRect(renderer, sdl2.SDL_Rect(mana_x, mana_y, bar_w, bar_h))
+        sdl2.SDL_SetRenderDrawColor(renderer, *COLORS["mana_empty"])
+        sdl2.SDL_RenderFillRect(renderer, sdl2.SDL_Rect(mana_x, mana_y, mana_w, bar_h))
 
-        # Mana hiện tại
-        fill_w = int((player.mana / MANA_MAX) * bar_w)
-        sdl2.SDL_SetRenderDrawColor(renderer, 80, 180, 255, 255)
-        sdl2.SDL_RenderFillRect(renderer, sdl2.SDL_Rect(mana_x, mana_y, fill_w, bar_h))
+        if player.mana > 0:
+            current_mana_w = int((player.mana / MANA_MAX) * mana_w)
+            sdl2.SDL_SetRenderDrawColor(renderer, *COLORS["mana_bar"])
+            sdl2.SDL_RenderFillRect(renderer, sdl2.SDL_Rect(mana_x, mana_y, current_mana_w, bar_h))
 
-        # Text Mana
-        if self.font:
-            text = f"{int(player.mana)} / {MANA_MAX}"
-            surf = ttf.TTF_RenderUTF8_Blended(self.font, text.encode('utf-8'), sdl2.SDL_Color(255,255,255))
+        if player.mana_warning_timer > 0:
+            surf = ttf.TTF_RenderUTF8_Blended(self.font, "Không đủ Mana!".encode(), sdl2.SDL_Color(255,50,50,255))
             if surf:
                 tex = sdl2.SDL_CreateTextureFromSurface(renderer, surf)
                 tw, th = surf.contents.w, surf.contents.h
@@ -59,28 +54,20 @@ class HUD:
                 sdl2.SDL_DestroyTexture(tex)
                 sdl2.SDL_FreeSurface(surf)
 
-        # ==================== Dưới cùng: Vàng - Lives - Deaths ====================
-        bottom_y = int(self.game.current_height * s - p - 45 * s)
+        # ==================== Dưới cùng: Vàng - Mạng - Chết ====================
+        bottom_y = SCREEN_HEIGHT - p - 45
 
-        # Vàng
-        gold_text = f"Vàng: {player.gold}"
-        self._draw_text(renderer, gold_text, p, bottom_y, (255, 215, 0))
-
-        # Lives
-        lives_text = f"Mạng: {self.game.lives}/{MAX_LIVES}"
-        self._draw_text(renderer, lives_text, p + 180 * s, bottom_y, (255, 255, 255))
-
-        # Deaths
-        deaths_text = f"Chết: {self.game.player_progress['total_deaths']}"
-        self._draw_text(renderer, deaths_text, p + 380 * s, bottom_y, (220, 60, 60))
+        self._draw_text(renderer, f"Vàng: {player.gold}", p, bottom_y, (255, 215, 0))
+        self._draw_text(renderer, f"Mạng: {self.game.lives}/{MAX_LIVES}", p + 180, bottom_y, (255, 255, 255))
+        self._draw_text(renderer, f"Chết: {self.game.player_progress['total_deaths']}", p + 380, bottom_y, (220, 60, 60))
 
     def _draw_text(self, renderer, text, x, y, color):
-        if not self.font:
-            return
-        surf = ttf.TTF_RenderUTF8_Blended(self.font, text.encode('utf-8'), sdl2.SDL_Color(*color))
+        if not self.font: return
+        sdl_color = sdl2.SDL_Color(color[0], color[1], color[2], 255)
+        surf = ttf.TTF_RenderUTF8_Blended(self.font, text.encode(), sdl_color)
         if surf:
             tex = sdl2.SDL_CreateTextureFromSurface(renderer, surf)
-            w, h = surf.contents.w, surf.contents.h
-            sdl2.SDL_RenderCopy(renderer, tex, None, sdl2.SDL_Rect(int(x), int(y), w, h))
+            tw, th = surf.contents.w, surf.contents.h
+            sdl2.SDL_RenderCopy(renderer, tex, None, sdl2.SDL_Rect(x, y, tw, th))
             sdl2.SDL_DestroyTexture(tex)
             sdl2.SDL_FreeSurface(surf)
