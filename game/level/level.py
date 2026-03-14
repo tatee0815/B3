@@ -4,7 +4,7 @@ import json
 import os
 from game.constants import TILE_SIZE, SCREEN_WIDTH, SCREEN_HEIGHT, GRAVITY
 from game.entities.enemy import Goblin, Skeleton, FireBat, BossShadowKing
-from game.entities.collectible import Coin, Collectible, ManaBottle, Heart
+from game.entities.collectible import Coin, Collectible, ManaBottle, Heart, Princess
 from game.objects.breakable import BreakableBox
 from game.objects.checkpoint import Checkpoint
 from game.objects.platform import Platform, OneWayPlatform, MovingPlatform
@@ -263,6 +263,8 @@ class Level:
                 self.entities.append(ManaBottle(game, x, y))
             elif etype == "heart":
                 self.entities.append(Heart(game, x, y))
+            elif etype == "princess":
+                self.entities.append(Princess(self.game, x, y))
 
             # --- NHÓM VẬT THỂ PHÁ HỦY ---
             elif etype == "breakable":
@@ -272,9 +274,12 @@ class Level:
             elif etype == "eportal":
                 from game.objects.portal import EndPortal
                 self.entities.append(EndPortal(game, x, y))
-            elif etype == "checkpoint":
-                from game.objects.checkpoint import Checkpoint
-                self.entities.append(Checkpoint(game, x, y))
+                
+            elif etype == "chest":
+                from game.objects.chest import Chest
+                # Đọc xem rương này mở khóa skill gì từ JSON (nếu có)
+                unlock = e.get("unlock", None)
+                self.entities.append(Chest(game, x, y, unlock_skill=unlock))
                 
             # Projectile sẽ được thêm động trong skill_a_fire()
     

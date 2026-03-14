@@ -113,20 +113,63 @@ class ManaBottle(Collectible):
         player.mana = min(player.mana + self.value, 100)
         print(f"+{self.value} mana → {player.mana}/100")
 
-
-# ────────────────────────────────────────────────
-# Các loại khác có thể thêm sau (power-up tạm thời)
-# ────────────────────────────────────────────────
-
-class PowerUpSword(Collectible):
-    """Tăng damage kiếm tạm thời"""
-
+class Princess(Entity):
+    """Công chúa - Thực thể tương tác để kết thúc game"""
     def __init__(self, game, x, y):
-        super().__init__(game, x, y, w=32, h=32)
-        self.color = (200, 200, 255, 255)  # tím nhạt
+        # Kích thước 30x48 để trông cao hơn nhân vật một chút
+        super().__init__(game, x, y, w=30, h=48)
+        self.z_index = 3
+        self.color = (255, 105, 180, 255)  # Màu hồng đặc trưng
+        
+        # Biến để tránh tương tác nhiều lần khi đang chuyển cảnh
+        self.is_rescued = False
+        
+        # Hiệu ứng bay lơ lửng nhẹ (giống các item khác)
+        self.bob_timer = 0.0
+        self.base_y = float(y)
 
-    def on_collect(self, player):
-        # Ví dụ: tăng damage 30s
-        print("Nhận Power-up Kiếm (damage +50% trong 30 giây)")
-        # player.melee_damage_multiplier = 1.5
-        # player.powerup_timer = 30.0
+    def update(self, delta_time, level):
+        # Hiệu ứng lơ lửng cho sinh động
+        self.bob_timer += delta_time * 3
+        self.pos_y = self.base_y + math.sin(self.bob_timer) * 5
+        self.rect.y = int(self.pos_y)
+
+    def on_interact(self, player):
+        """Hàm này được gọi từ player.interact() khi bấm phím E"""
+        if self.is_rescued: 
+            return
+            
+        self.is_rescued = True
+        print("Công chúa: 'Cảm ơn hiệp sĩ đã cứu thiếp!'")
+        
+        # Chuyển trạng thái sang màn hình chiến thắng
+        self.game.change_state("win")
+
+    def render(self, renderer, camera):
+        draw_rect = sdl2.SDL_Rect(
+            int(self.rect.x - camera.x),
+            int(self.rect.y - camera.y),
+            self.rect.w,
+            self.rect.h
+        )
+        
+        # Vẽ Công chúa (Hình khối màu hồng)
+        sdl2.SDL_SetRenderDrawColor(renderer, *self.color)
+        sdl2.SDL_RenderFillRect(renderer, draw_rect)
+
+        # Vẽ gợi ý tương tác khi Player đứng gần
+        # Tính khoảng cách đơn giản để hiện chữ
+        playing_state = self.game.states.get("playing")
+        if playing_state and playing_state.player:
+            player = playing_state.player
+            # Tạo một rect tương tác giả lập để kiểm tra xem có nên hiện chữ "E" không
+            interact_check = sdl2.SDL_Rect(int(player.rect.x - 20), int(player.rect.y - 20), 
+                                          int(player.rect.w + 40), int(player.rect.h + 40))
+            
+            if sdl2.SDL_HasIntersection(interact_check, self.rect) and not self.is_rescued:
+                if hasattr(self.game, 'hud'):
+                    # Hiển thị text hướng dẫn ngay trên đầu Công chúa
+                    self.game.hud._draw_text(
+                        renderer, "Nhấn E để Giải Cứu", 
+                        draw_rect.x - 30, draw_rect.y - 30, (255, 255, 255)
+                    )

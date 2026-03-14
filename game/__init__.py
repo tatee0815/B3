@@ -30,7 +30,6 @@ from .entities.base import Entity
 from .entities.player import Player
 from .entities.enemy import Enemy, Goblin, Skeleton, FireBat, BossShadowKing
 from .entities.projectile import Projectile
-from .entities.npc import NPC
 
 from .objects.platform import Platform, MovingPlatform, OneWayPlatform
 from .objects.breakable import BreakableBox

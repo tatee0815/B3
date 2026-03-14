@@ -10,11 +10,8 @@ import sdl2
 # -------------------------------
 SCREEN_WIDTH          = 1280
 SCREEN_HEIGHT         = 720
-FPS_TARGET            = 60
+FPS_TARGET            = 120
 FPS_FRAME_TIME_MS     = 1000 // FPS_TARGET   # ~16ms
-
-# Có thể bật fullscreen sau này
-FULLSCREEN            = False
 
 # -------------------------------
 # Vật lý & chuyển động
@@ -103,10 +100,6 @@ TILES_DIR       = ASSETS_ROOT + "tiles/"
 BG_DIR          = ASSETS_ROOT + "backgrounds/"
 SOUNDS_DIR      = ASSETS_ROOT + "sounds/"
 FONTS_DIR       = ASSETS_ROOT + "fonts/"
-
-# Tên file phổ biến (có thể thay đổi sau)
-PLAYER_SPRITE_SHEET = SPRITES_DIR + "player/knight_sheet.png"
-FONT_PIXEL          = FONTS_DIR + "pixel_font.ttf"
 
 # -------------------------------
 # Các giá trị khác

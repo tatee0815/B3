@@ -19,6 +19,7 @@ from game.states.playing import PlayingState
 from game.states.pause import PauseState
 from game.states.win import WinState
 from game.ui.hud import HUD
+from game.states.game_over import GameOverState
 
 
 class Game:
@@ -100,6 +101,7 @@ class Game:
         self.states["setting"] = SettingState(self)
         self.states["playing"] = PlayingState(self)
         self.states["pause"] = PauseState(self)
+        self.states["game_over"] = GameOverState(self)
         self.states["win"] = WinState(self)
 
     def change_state(self, state_name, **kwargs):

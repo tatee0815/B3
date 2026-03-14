@@ -170,9 +170,9 @@ class PlayingState:
 
             # 2. Xử lý Tương tác (Trò chuyện/Mở hòm)
             if scancode == KEY_BINDINGS_DEFAULT["interact"]:
-                # Kiểm tra va chạm với NPC hoặc Object gần đó
+                # Kiểm tra va chạm với Object gần đó
                 if hasattr(self, 'player'):
-                    self.player.interact() # Giả định player có hàm interact()
+                    self.player.interact() 
                 return
 
         # 3. Chuyển các phím di chuyển/chiến đấu cho Player xử lý

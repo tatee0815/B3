@@ -98,12 +98,16 @@ class Player(Entity):
         if self.on_ground:
             self.vel_y = JUMP_FORCE # Hoặc JUMP_FORCE của fen
             self.on_ground = False # Nhảy lên thì không còn trên đất
-        elif self.can_double_jump and self.jumped_once:
+            self.jumped_once = True # Đánh dấu đã nhảy một lần
+        elif self.game.player_progress.get("double_jump", False) and self.jumped_once:
             self.vel_y = DOUBLE_JUMP_FORCE
-            self.jumped_once = False
+            self.jumped_once = False # Reset để không thể nhảy lần thứ 3
 
     def dash(self):
-        # Sửa lỗi AttributeError bằng cách đảm bảo can_dash_in_air đã có trong __init__
+        # Kiểm tra xem đã mở khóa Dash chưa
+        if "dash" not in self.game.player_progress.get("unlocked_skills", []):
+            return
+        
         if self.dash_cooldown <= 0 and (self.on_ground or self.can_dash_in_air):
             self.is_dashing = True
             self.dash_timer = self.DASH_DURATION
@@ -147,6 +151,9 @@ class Player(Entity):
             self.can_dash_in_air = True
 
     def use_skill(self):
+        if "skill_a" not in self.game.player_progress.get("unlocked_skills", []):
+            return
+        
         if self.mana >= SKILL_A_COST:
             self.mana -= SKILL_A_COST
             self.skill_a_fire()
@@ -162,10 +169,13 @@ class Player(Entity):
 
     def interact(self):
         entities = self.game.states["playing"].level.entities
+        # Nới rộng vùng tương tác để đứng gần rương bấm E là ăn ngay
+        interact_rect = sdl2.SDL_Rect(int(self.rect.x - 20), int(self.rect.y - 20), 
+                                      int(self.rect.w + 40), int(self.rect.h + 40))
         for e in entities:
-            if e != self and self.collides_with(e):
+            if e != self and hasattr(e, "rect") and sdl2.SDL_HasIntersection(interact_rect, e.rect):
                 if hasattr(e, "on_interact"):
-                    e.on_interact()
+                    e.on_interact(self) # Chuyền bản thân Player vào để lưu Checkpoint
                     return
 
     def update(self, delta_time, level):
@@ -321,23 +331,20 @@ class Player(Entity):
     
     def handle_death(self):
         """Xử lý tập trung khi nhân vật chết"""
-        print("Nhân vật đã chết! Đang hồi sinh...")
+        print("Nhân vật đã chết!")
         
-        # 1. Trừ mạng (Lives) từ instance Game
         if hasattr(self.game, 'lives'):
             self.game.lives -= 1
             if self.game.lives <= 0:
-                print("Game Over!")
+                print("Hết mạng! Game Over!")
+                self.game.change_state("game_over") # Chuyển thẳng ra màn hình Game Over
+                return
 
         if 'total_deaths' in self.game.player_progress:
             self.game.player_progress['total_deaths'] += 1
-        else:
-            self.game.player_progress['total_deaths'] = 1
-    
-        # 3. Gọi hàm respawn và hồi phục chỉ số
+        # Hồi sinh nếu còn mạng
         self.is_respawning = True
         self.respawn(self.checkpoint_pos)
-
         self.hp = PLAYER_MAX_HP
         self.is_respawning = False
 
