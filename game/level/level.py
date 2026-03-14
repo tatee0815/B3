@@ -377,10 +377,13 @@ class Level:
 
             # --- D. XỬ LÝ RIÊNG BIỆT ---
             if isinstance(entity, Collectible):
+                if hasattr(entity, 'alive') and not entity.alive:
+                    continue
                 if sdl2.SDL_HasIntersection(player.rect, entity.rect):
                     entity.on_collect(player)
                     entity.alive = False
                     if entity in self.entities: self.entities.remove(entity)
+                    continue
 
             elif isinstance(entity, BreakableBox):
                 if not entity.broken:

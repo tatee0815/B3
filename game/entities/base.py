@@ -20,6 +20,8 @@ class Entity:
         self.texture = None
         self.color = (255, 255, 255, 255)  # fallback
 
+        self.alive = True  # để đánh dấu đã chết hay chưa, tránh update/render sau khi chết
+
     def update(self, delta_time, level=None):
         if level:
             # 1. Áp dụng trọng lực
@@ -58,3 +60,6 @@ class Entity:
                 self.rect.x + self.rect.w > other.rect.x and
                 self.rect.y < other.rect.y + other.rect.h and
                 self.rect.y + self.rect.h > other.rect.y)
+    
+    def kill(self):
+        self.alive = False

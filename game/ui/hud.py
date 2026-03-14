@@ -55,7 +55,7 @@ class HUD:
         sdl2.SDL_RenderFillRect(renderer, sdl2.SDL_Rect(mana_x, mana_y, bar_w, bar_h))
         
         if player.mana > 0:
-            current_mana_w = int(bar_w * (player.mana / MANA_MAX))
+            current_mana_w = int(bar_w * (int(player.mana) / MANA_MAX))
             sdl2.SDL_SetRenderDrawColor(renderer, *COLORS["mana_bar"])
             sdl2.SDL_RenderFillRect(renderer, sdl2.SDL_Rect(mana_x, mana_y, current_mana_w, bar_h))
 

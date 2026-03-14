@@ -19,6 +19,7 @@ class Collectible(Entity):
     def __init__(self, game, x, y, w=24, h=24):
         super().__init__(game, x, y, w, h)
         self.z_index = 2
+        self.collected = False  # đã được nhặt chưa
 
         self.draw_y = float(y)
         
@@ -69,6 +70,10 @@ class Heart(Collectible):
 
     def on_collect(self, player):
         from game.constants import PLAYER_MAX_HP
+
+        if self.collected: return  # tránh collect nhiều lần
+        self.collected = True
+
         if player.hp < PLAYER_MAX_HP:
             player.hp += 1
             print(f"Nhặt tim! HP hiện tại: {player.hp}")
@@ -87,9 +92,11 @@ class Coin(Collectible):
         self.bob_frequency = 4.0  # lắc nhanh hơn tí
 
     def on_collect(self, player):
+        if self.collected: return  # tránh collect nhiều lần
+        self.collected = True
         player.gold += self.value
         print(f"+{self.value} vàng → {player.gold}")
-
+        self.kill()  # loại bỏ khỏi game sau khi nhặt
 
 class ManaBottle(Collectible):
     """Hồi mana"""
@@ -101,6 +108,8 @@ class ManaBottle(Collectible):
         self.particle_color = (120, 220, 255, 255)
 
     def on_collect(self, player):
+        if self.collected: return  # tránh collect nhiều lần
+        self.collected = True
         player.mana = min(player.mana + self.value, 100)
         print(f"+{self.value} mana → {player.mana}/100")
 
