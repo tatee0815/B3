@@ -31,14 +31,18 @@ class Camera:
             # Nếu map cao hơn màn hình, max_y sẽ > 0
             max_y = max(0, lvl.pixel_height - self.height)
             target_y = max(0, min(target_y, max_y))
-        
-        # Tính toán mức di chuyển dự định
-        move_x = (target_x - self.x) * self.smooth_factor
-        move_y = (target_y - self.y) * self.smooth_factor
 
-        # Giới hạn mức dịch chuyển tối đa mỗi frame để tránh giật hình (ví dụ: 60px)
-        self.x += max(-60, min(60, move_x))
-        self.y += max(-60, min(60, move_y))
+        if abs(target_x - self.x) > 400 or abs(target_y - self.y) > 400:
+            self.x = float(target_x)
+            self.y = float(target_y)
+        else:
+            # Tính toán mức di chuyển dự định
+            move_x = (target_x - self.x) * self.smooth_factor
+            move_y = (target_y - self.y) * self.smooth_factor
+
+            # Giới hạn mức dịch chuyển tối đa mỗi frame để tránh giật hình (ví dụ: 60px)
+            self.x += max(-60, min(60, move_x))
+            self.y += max(-60, min(60, move_y))
 
     def reset(self, start_x=0, start_y=0):
         self.x = start_x

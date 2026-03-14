@@ -12,6 +12,7 @@ class Entity:
         self.pos_y = float(y)
         self.vel_x = 0.0
         self.vel_y = 0.0
+        self.z_index = 1
         
         self.on_ground = False
         self.facing_right = True

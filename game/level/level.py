@@ -4,6 +4,10 @@ import json
 import os
 from game.constants import TILE_SIZE, SCREEN_WIDTH, SCREEN_HEIGHT, GRAVITY
 from game.entities.enemy import Goblin, Skeleton, FireBat, BossShadowKing
+from game.entities.collectible import Coin, Collectible, ManaBottle, Heart
+from game.objects.breakable import BreakableBox
+from game.objects.checkpoint import Checkpoint
+from game.objects.platform import Platform, OneWayPlatform, MovingPlatform
 
 class Level:
     def __init__(self, game):
@@ -115,6 +119,39 @@ class Level:
                 player.vel_y = 0
             player.pos_y = float(p.y)
 
+    def resolve_world_collision(self, entity):
+        """
+        Xử lý va chạm giữa một thực thể bất kỳ (Coin, Thùng, Item) với sàn gạch.
+        Giúp chúng không bị rơi xuyên map.
+        """
+        # 1. Xác định phạm vi các ô gạch xung quanh thực thể
+        p = entity.rect
+        start_col = max(0, p.x // TILE_SIZE)
+        end_col = min(self.width - 1, (p.x + p.w) // TILE_SIZE)
+        start_row = max(0, p.y // TILE_SIZE)
+        end_row = min(self.height - 1, (p.y + p.h) // TILE_SIZE)
+
+        for row in range(start_row, end_row + 1):
+            for col in range(start_col, end_col + 1):
+                # Kiểm tra nếu ô gạch là vật thể rắn (ID 1 hoặc 2)
+                if 0 <= row < len(self.tiles) and 0 <= col < len(self.tiles[row]):
+                    tile_id = self.tiles[row][col]
+                    if tile_id in [1, 2]:
+                        tile_rect = sdl2.SDL_Rect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+                        
+                        if sdl2.SDL_HasIntersection(p, tile_rect):
+                            # Chỉ xử lý va chạm từ trên xuống (đứng trên sàn)
+                            # để các item rơi xuống và nằm yên trên mặt đất
+                            overlap_y = min(p.y + p.h, tile_rect.y + tile_rect.h) - max(p.y, tile_rect.y)
+                            overlap_x = min(p.x + p.w, tile_rect.x + tile_rect.w) - max(p.x, tile_rect.x)
+
+                            if overlap_y < overlap_x: # Ưu tiên xử lý trục dọc trước cho việc rơi
+                                if p.y + p.h / 2 < tile_rect.y + tile_rect.h / 2: # Chạm mặt trên của gạch
+                                    p.y -= overlap_y
+                                    if hasattr(entity, 'vel_y'): entity.vel_y = 0
+                                    if hasattr(entity, 'on_ground'): entity.on_ground = True
+                                    entity.pos_y = float(p.y)
+
     def render(self, renderer, camera):
         """Vẽ map với kiểm tra biên an toàn để tránh IndexError"""
         # Chuyển đổi tọa độ camera sang số nguyên
@@ -157,16 +194,30 @@ class Level:
                         elif tile_id == 3: # Dung nham (LAVA)
                             sdl2.SDL_SetRenderDrawColor(renderer, 255, 69, 0, 255) # Màu đỏ cam rực
                             sdl2.SDL_RenderFillRect(renderer, dst_rect)
+
+        if hasattr(self, 'start_position'):
+            spawn_x, spawn_y = self.start_position
+            # Vẽ một luồng sáng màu lục lam mờ (Cyan) tại điểm spawn
+            spawn_rect = sdl2.SDL_Rect(
+                int(spawn_x - camera.x), 
+                int(spawn_y - camera.y), 
+                self.tile_size, self.tile_size * 2
+            )
+            sdl2.SDL_SetRenderDrawColor(renderer, 0, 255, 255, 100) # (R, G, B, Alpha)
+            # Dùng DrawRect (chỉ viền) hoặc FillRect tùy fen
+            sdl2.SDL_RenderDrawRect(renderer, spawn_rect)
+
         self.render_entities(renderer, camera)
 
     def get_spawn_position(self):
         return self.start_position
 
     def check_win(self, player):
-        return player.rect.x > (self.pixel_width - 100)
+        return getattr(self, 'is_completed', False)
     
     def spawn_all_entities(self, game):
         """Khởi tạo tất cả thực thể từ dữ liệu JSON"""
+        self.is_completed = False # Reset cờ mỗi khi load map
         self.entities.clear()
         self.enemies.clear() # Xóa danh sách quái cũ
         self.platforms = []
@@ -194,36 +245,36 @@ class Level:
                 self.entities.append(fire_bat)
                 self.enemies.append(fire_bat)
 
-            # --- Xử lý các loại Vật phẩm / Platform ---
-            elif etype == "platform":
-                from game.objects.platform import Platform
-                plat = Platform(game, x, y, e.get("w", 128), e.get("h", 32))
-                self.entities.append(plat)
-                # Phải có dòng này để vòng lặp ở bước 2 tìm thấy platform để vẽ
-                if not hasattr(self, 'platforms'): self.platforms = []
-                self.platforms.append(plat)
-
-            elif etype == "moving_platform":
-                from game.objects.platform import MovingPlatform
-                # Thêm tốc độ và hướng từ JSON
-                m_plat = MovingPlatform(game, x, y, e.get("w", 128), e.get("h", 20), 
-                                        speed=e.get("speed", 2.0))
-                self.entities.append(m_plat)
-                self.platforms.append(m_plat)
+            # --- NHÓM PLATFORM ---
+            elif "platform" in etype:
+                p_w = e.get("w", self.tile_size)
+                p_h = e.get("h", self.tile_size)
+                if etype == "platform":
+                    self.platforms.append(Platform(game, x, y, p_w, p_h))
+                elif etype == "one_way_platform":
+                    self.platforms.append(OneWayPlatform(game, x, y, p_w, p_h))
+                elif etype == "moving_platform":
+                    self.platforms.append(MovingPlatform(game, x, y, p_w, p_h, speed=e.get("speed", 2.0)))
                 
+            # --- NHÓM ITEM THU THẬP ---
             elif etype == "coin":
-                from game.entities.collectible import Coin
-                self.entities.append(Coin(game, x, y, e.get("value", 5)))
-                
+                self.entities.append(Coin(game, x, y))
             elif etype == "mana":
-                from game.entities.collectible import ManaBottle
-                mana = ManaBottle(game, x, y, e.get("value", 25))
-                self.entities.append(mana)
+                self.entities.append(ManaBottle(game, x, y))
+            elif etype == "heart":
+                self.entities.append(Heart(game, x, y))
 
+            # --- NHÓM VẬT THỂ PHÁ HỦY ---
+            elif etype == "breakable":
+                self.entities.append(BreakableBox(game, x, y, explosive=e.get("explosive", False)))
+
+            # --- NHÓM CỔNG & CHECKPOINT ---
+            elif etype == "eportal":
+                from game.objects.portal import EndPortal
+                self.entities.append(EndPortal(game, x, y))
             elif etype == "checkpoint":
                 from game.objects.checkpoint import Checkpoint
-                cp = Checkpoint(game, x, y)
-                self.entities.append(cp)
+                self.entities.append(Checkpoint(game, x, y))
                 
             # Projectile sẽ được thêm động trong skill_a_fire()
     
@@ -283,32 +334,108 @@ class Level:
         return False
 
     def update_entities(self, delta_time):
-        # 1. Update Platform trước (Để logic cưỡi platform mượt hơn)
+        player = self.game.states["playing"].player
+        if not player: return
+
+        # 1. UPDATE PLATFORMS TRƯỚC (Rất quan trọng)
+        # Truyền 'self' (level) để Platform có thể kéo player đi theo logic dx, dy
         for plat in self.platforms:
-            plat.update(delta_time)
+            if hasattr(plat, 'update'):
+                # Truyền self vào để trong MovingPlatform có thể gọi level.game.states...
+                plat.update(delta_time, self) 
 
-        # 2. Update các thực thể khác
-        from game.objects.checkpoint import Checkpoint # Import để check loại
+        # 2. XỬ LÝ VA CHẠM ĐỨNG LÊN PLATFORM
+        # Sau khi bục đã di chuyển và kéo player, ta mới khóa vị trí chân player
+        for plat in self.platforms:
+            plat.resolve_collision(player)
 
+        # 3. UPDATE VÀ XỬ LÝ CÁC ENTITIES KHÁC
         for entity in self.entities[:]:
             if hasattr(entity, 'alive') and not entity.alive:
+                self.entities.remove(entity)
                 continue
-            
-            # --- ĐOẠN FIX CHO CHECKPOINT ---
+
+            # --- A. CHECKPOINT ---
             if isinstance(entity, Checkpoint):
-                # Vì file checkpoint.py của fen nhận player, ta lấy player từ state playing
-                player = self.game.states["playing"].player
-                if player:
-                    entity.update(player) 
-            # -------------------------------
-            
-            elif hasattr(entity, 'update'):
-                # Các thực thể khác như Enemy, Coin, Mana vẫn dùng delta_time và level
+                entity.update(player)
+                continue
+
+            # --- B. UPDATE CHUNG (Trọng lực, vị trí...) ---
+            if hasattr(entity, 'update'):
                 entity.update(delta_time, self)
 
+            # --- C. CHẶN RƠI CHO ITEM VÀ THÙNG ---
+            if isinstance(entity, (Collectible, BreakableBox)):
+                # Va chạm với gạch (Tiles)
+                self.resolve_world_collision(entity)
+                
+                # Va chạm với Platforms (Để item rớt lên bục di chuyển được)
+                for plat in self.platforms:
+                    # Tận dụng hàm resolve_collision có sẵn, 
+                    # truyền entity vào thay vì player
+                    plat.resolve_collision(entity)
+
+            # --- D. XỬ LÝ RIÊNG BIỆT ---
+            if isinstance(entity, Collectible):
+                if sdl2.SDL_HasIntersection(player.rect, entity.rect):
+                    entity.on_collect(player)
+                    entity.alive = False
+                    if entity in self.entities: self.entities.remove(entity)
+
+            elif isinstance(entity, BreakableBox):
+                if not entity.broken:
+                    self.resolve_solid_collision(player, entity)
+                    if player.is_attacking and sdl2.SDL_HasIntersection(player.attack_rect, entity.rect):
+                        entity.take_damage(1)
+                
+                if hasattr(entity, 'update'):
+                    entity.update(delta_time, self)
+
+            # --- D. QUÁI VẬT VÀ CÁC THỨ CÒN LẠI ---
+            elif hasattr(entity, 'update'):
+                # Vì Checkpoint đã xử lý ở mục A, ở đây chỉ còn Enemy/Projectiles...
+                entity.update(delta_time, self)
+
+        # --- E. BẢO HIỂM RƠI XUYÊN MAP (CHỐNG BUG) ---
+        if player.pos_y > self.pixel_height:
+            player.pos_y = float(self.pixel_height - player.rect.h)
+            player.rect.y = int(player.pos_y)
+            player.vel_y = 0
+            player.on_ground = True
+    
+    def resolve_solid_collision(self, player, obstacle):
+        """Xử lý va chạm để Player không đi xuyên qua vật thể rắn (thùng)"""
+        if sdl2.SDL_HasIntersection(player.rect, obstacle.rect):
+            # Tính toán khoảng cách chồng lấp (overlap)
+            overlap_top = (player.rect.y + player.rect.h) - obstacle.rect.y
+            overlap_bottom = (obstacle.rect.y + obstacle.rect.h) - player.rect.y
+            overlap_left = (player.rect.x + player.rect.w) - obstacle.rect.x
+            overlap_right = (obstacle.rect.x + obstacle.rect.w) - player.rect.x
+
+            # Tìm hướng va chạm nhỏ nhất để đẩy player ra
+            min_overlap = min(overlap_top, overlap_bottom, overlap_left, overlap_right)
+
+            if min_overlap == overlap_top and player.vel_y > 0:
+                player.rect.y -= overlap_top
+                player.pos_y = float(player.rect.y)
+                player.vel_y = 0
+                player.on_ground = True
+            elif min_overlap == overlap_bottom and player.vel_y < 0:
+                player.rect.y += overlap_bottom
+                player.pos_y = float(player.rect.y)
+                player.vel_y = 0
+            elif min_overlap == overlap_left:
+                player.rect.x -= overlap_left
+                player.pos_x = float(player.rect.x)
+            elif min_overlap == overlap_right:
+                player.rect.x += overlap_right
+                player.pos_x = float(player.rect.x)
+
     def render_entities(self, renderer, camera):
-        """Vẽ tất cả entities (quái sẽ hiện ở đây)"""
-        for entity in self.entities:
+        """Vẽ tất cả entities theo thứ tự Z-Index để đảm bảo tính thống nhất"""
+        sorted_entities = sorted(self.entities, key=lambda e: getattr(e, 'z_index', 1))
+        
+        for entity in sorted_entities:
             if hasattr(entity, 'alive') and not entity.alive:
                 continue
             if hasattr(entity, 'render'):

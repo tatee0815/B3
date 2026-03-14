@@ -11,6 +11,7 @@ class Player(Entity):
     def __init__(self, game):
         # Khởi tạo tại tọa độ mặc định, kích thước nhân vật 24x48
         super().__init__(game, x=100, y=400, w=24, h=48)
+        self.z_index = 4
 
         progress = self.game.player_progress
         
@@ -54,7 +55,7 @@ class Player(Entity):
         self.recoil_timer = 0
         self.recoil_force = 5 # Độ mạnh của lực bật lùi
 
-        self.debug_mode = True # Đổi thành False để ẩn khung đỏ khi xong
+        self.debug_mode = False # Đổi thành False để ẩn khung đỏ khi xong
         
         self.is_respawning = False
         self.state = "idle"
@@ -291,6 +292,13 @@ class Player(Entity):
                 self.knockback_vel_x = 0.0
 
         self._update_state() # Cập nhật animation state (idle, run, jump...)
+
+        # Nếu rơi quá sâu (vượt quá chiều cao của Map)
+        if self.pos_y > level.pixel_height:
+            if hasattr(self, 'hp'):
+                self.hp = 0 # Hiệp sĩ tử trận
+            else:
+                self.alive = False # Quái biến mất
     
     def take_damage(self, amount, knockback_dir=1):
         """Player bị quái đánh - đã tích hợp invincible + knockback"""
@@ -339,6 +347,19 @@ class Player(Entity):
         elif not self.on_ground: self.state = "jump"
         elif self.vel_x != 0: self.state = "run"
         else: self.state = "idle"
+
+    def check_bounds(self):
+        # Chặn trái
+        if self.rect.x < 0:
+            self.rect.x = 0
+            self.pos_x = 0.0
+        # Chặn phải
+        if self.rect.x + self.rect.w > self.level.pixel_width:
+            self.rect.x = self.level.pixel_width - self.rect.w
+            self.pos_x = float(self.rect.x)
+        # Rơi xuống vực (Y quá lớn) -> Chết
+        if self.rect.y > self.level.pixel_height + 100:
+            self.take_damage(999)
 
     def respawn(self, pos):
         # 1. Đưa tọa độ về vị trí an toàn

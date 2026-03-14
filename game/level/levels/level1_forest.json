@@ -55,6 +55,9 @@
   ],
   "entities": [
   {"type": "player_spawn", "x": 100, "y": 1296},
+  { "type": "coin", "x": 400, "y": 1200 },
+  { "type": "mana", "x": 600, "y": 1200 },
+  { "type": "breakable", "x": 800, "y": 1250, "explosive": false },
 
   {"type": "goblin", "x": 420, "y": 1264},
   {"type": "coin", "x": 580, "y": 1190, "value": 10},
@@ -81,6 +84,6 @@
   {"type": "breakable", "x": 1890, "y": 980, "explosive": false},
   {"type": "coin", "x": 1905, "y": 930, "value": 12},
 
-  {"type": "exit_portal", "x": 1880, "y": 1150}
+  {"type": "eportal", "x": 1880, "y": 1150}
 ]
 }

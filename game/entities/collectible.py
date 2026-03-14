@@ -3,8 +3,7 @@ Các đối tượng thu thập (collectible) - item nhặt được từ thùng
 """
 
 import math
-import sdl2.ext
-
+import sdl2
 from game.constants import TILE_SIZE, COLORS
 from .base import Entity
 
@@ -19,6 +18,7 @@ class Collectible(Entity):
 
     def __init__(self, game, x, y, w=24, h=24):
         super().__init__(game, x, y, w, h)
+        self.z_index = 2
 
         self.draw_y = float(y)
         
@@ -28,7 +28,7 @@ class Collectible(Entity):
         self.bob_frequency = 3.0   # tốc độ dao động (rad/s)
         
         # Spawn offset để tránh chìm sàn ngay lập tức
-        self.rect.y -= 8  # nhấc lên tí khi spawn
+        self.rect.y -= 8  # nhấc lên tí khi spawn 
 
         # Có thể override ở subclass
         self.collect_sound = None  # sẽ load từ utils/assets.py sau
@@ -36,7 +36,7 @@ class Collectible(Entity):
 
     def update(self, delta_time, level=None):
         super().update(delta_time, level)
-        
+
         # Animation lơ lửng (không ảnh hưởng collision)
         self.bob_timer += delta_time
         offset_y = math.sin(self.bob_timer * self.bob_frequency) * self.bob_amplitude
@@ -46,57 +46,34 @@ class Collectible(Entity):
         player = self.game.states["playing"].player
         if player and self.collides_with(player):
             self.on_collect(player)
-            self._on_collected()
-
-    def on_collect(self, player):
-        """Override ở subclass để áp dụng hiệu ứng"""
-        raise NotImplementedError("Phải override on_collect")
-
-    def _on_collected(self):
-        """Logic chung khi bị nhặt: xóa khỏi level, play sound/particle"""
-        level = self.game.states["playing"].level
-        if self in level.entities:
-            level.entities.remove(self)
-        
-        # Play sound (sau này)
-        # if self.collect_sound:
-        #     sdl2.mixer.Mix_PlayChannel(-1, self.collect_sound, 0)
-        
-        # Particle giả lập (sau này dùng particle system)
-        print(f"Collected {self.__class__.__name__} at ({self.rect.x}, {self.rect.y})")
 
     def render(self, renderer, camera):
-        # Dùng draw_y thay vì rect.y để tạo hiệu ứng bob
-        dst_rect = sdl2.SDL_Rect(
-            int(self.rect.x - camera.x),
-            int(self.draw_y - camera.y),
-            self.rect.w,
-            self.rect.h
-        )
+        # Dùng draw_y thay vì rect.y để tạo hiệu ứng bob 
+        draw_x = int(self.rect.x - camera.x)
+        draw_y = int(self.draw_y - camera.y) # Dùng draw_y thay vì rect.y
         
-        if self.texture:
-            renderer.copy(self.texture, dstrect=dst_rect)
-        else:
-            # Fallback hình chữ nhật + màu
-            # renderer.fill(self.color, dst_rect)
-            pass
+        draw_rect = sdl2.SDL_Rect(draw_x, draw_y, self.rect.w, self.rect.h)
+        sdl2.SDL_SetRenderDrawColor(renderer, *self.color)
+        sdl2.SDL_RenderFillRect(renderer, draw_rect)
 
 
 # ────────────────────────────────────────────────
 
 
 class Heart(Collectible):
-    """Hồi 1 tim (HP)"""
-
+    """Hồi máu cho Player"""
     def __init__(self, game, x, y):
-        super().__init__(game, x, y, w=24, h=24)
-        self.color = COLORS["red"]
-        self.particle_color = (255, 80, 80, 255)
+        super().__init__(game, x, y, w=22, h=20)
+        self.color = (255, 50, 50, 255) # Màu đỏ
+        self.z_index = 2
 
     def on_collect(self, player):
-        player.hp = min(player.hp + 1, player.game.constants.PLAYER_MAX_HP)
-        print(f"+1 HP → {player.hp}/{player.game.constants.PLAYER_MAX_HP}")
-
+        from game.constants import PLAYER_MAX_HP
+        if player.hp < PLAYER_MAX_HP:
+            player.hp += 1
+            print(f"Nhặt tim! HP hiện tại: {player.hp}")
+        else:
+            print("HP đã đầy!")
 
 class Coin(Collectible):
     """Thu thập vàng"""

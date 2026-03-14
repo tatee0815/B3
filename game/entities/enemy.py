@@ -7,6 +7,7 @@ MANA_PER_KILL = 5
 class Enemy(Entity):
     def __init__(self, game, x, y, hp=30, damage=10):
         super().__init__(game, x, y, 32, 32)
+        self.z_index = 3
         self.hp = hp
         self.damage = damage
         self.patrol_speed = 1.5
@@ -44,6 +45,15 @@ class Enemy(Entity):
         self.pos_x += self.vel_x * delta_time * 60
         self.rect.x = int(self.pos_x)
         self._resolve_collision(level, is_y=False)
+
+        self.pos_x = max(0, min(self.pos_x, level.pixel_width - self.rect.w))
+
+        # Nếu rơi quá sâu (vượt quá chiều cao của Map)
+        if self.pos_y > level.pixel_height:
+            if hasattr(self, 'hp'):
+                self.hp = 0 # Hiệp sĩ tử trận
+            else:
+                self.alive = False # Quái biến mất
 
     def _update_ai_state(self, player, level):
         self.is_chasing = False

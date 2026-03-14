@@ -139,12 +139,12 @@ class Game:
                     
                     # Tính toán scale chỉ để các state dùng nếu cần, 
                     # không áp dụng vào SDL_RenderSetScale nữa
-                    self.scale_x = self.current_width / SCREEN_WIDTH
-                    self.scale_y = self.current_height / SCREEN_HEIGHT
+                    self.scale_x = self.current_width / self.logical_width
+                    self.scale_y = self.current_height / self.logical_height
                     
                     # Cập nhật camera theo kích thước thực
-                    self.camera.width = self.current_width
-                    self.camera.height = self.current_height
+                    self.camera.width = self.logical_width
+                    self.camera.height = self.logical_height
 
             if event.type == sdl2.SDL_KEYDOWN:
                 if event.key.keysym.scancode == sdl2.SDL_SCANCODE_ESCAPE:
@@ -187,21 +187,18 @@ class Game:
         sdl2.SDL_SetRenderDrawColor(self.renderer, 0, 0, 0, 255)
         sdl2.SDL_RenderClear(self.renderer)
 
+        sdl2.SDL_RenderSetScale(self.renderer, self.scale_x, self.scale_y)
+
         # Xử lý Render đặc biệt cho Pause (vẽ Playing làm nền)
         if self.current_state.name == "pause":
-            sdl2.SDL_RenderSetScale(self.renderer, self.scale_x, self.scale_y)
             self.states["playing"].render(self.renderer) # Vẽ game đang chơi bên dưới
-            
-            sdl2.SDL_RenderSetScale(self.renderer, 1.0, 1.0) # Reset để vẽ Pause đè lên toàn màn hình
+            sdl2.SDL_RenderSetScale(self.renderer, 1.0, 1.0)
             self.states["pause"].render(self.renderer)
         else:
-            # Render thông thường cho các state khác
-            sdl2.SDL_RenderSetScale(self.renderer, self.scale_x, self.scale_y)
             self.current_state.render(self.renderer)
 
             # Vẽ HUD riêng nếu đang chơi
             if self.current_state.name == "playing":
-                sdl2.SDL_RenderSetScale(self.renderer, self.hud_scale, self.hud_scale)
                 self.hud.render(self.renderer)
 
         sdl2.SDL_RenderPresent(self.renderer)
