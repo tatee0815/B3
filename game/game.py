@@ -23,6 +23,8 @@ from game.ui.hud import HUD
 
 class Game:
     def __init__(self, window, renderer):
+        sdl2.SDL_SetHint(sdl2.SDL_HINT_RENDER_SCALE_QUALITY, b"1")
+        
         self.window = window
         self.renderer = renderer
 
