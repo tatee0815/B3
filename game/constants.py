@@ -63,7 +63,7 @@ KEY_BINDINGS_DEFAULT = {
     "skill":    sdl2.SDL_SCANCODE_A,
     "dash":     sdl2.SDL_SCANCODE_C,
     "pause":    sdl2.SDL_SCANCODE_P,
-    "interact": sdl2.SDL_SCANCODE_E,
+    "interact": sdl2.SDL_SCANCODE_UP,  # Đổi từ E sang UP để tránh trùng với các phím khác
 }
 # Cho phép người chơi tùy chỉnh sau này (lưu trong settings.json)
 

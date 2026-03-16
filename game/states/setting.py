@@ -28,7 +28,7 @@ class SettingState:
         self.music_volume = 70
         self.sfx_volume = 85
 
-        self.key_names = ["Trái", "Phải", "Nhảy", "Chém", "Skill", "Lướt", "Tạm dừng", "Tương tác"]
+        self.key_names = ["Trái", "Phải", "Nhảy", "Chém", "Kỹ năng", "Lướt", "Tạm dừng", "Tương tác"]
         self.key_list = ["left", "right", "jump", "attack", "skill", "dash", "pause", "interact"]
 
         self._load_settings()
@@ -138,7 +138,7 @@ class SettingState:
             "skill": sdl2.SDL_SCANCODE_A,
             "dash": sdl2.SDL_SCANCODE_C,
             "pause": sdl2.SDL_SCANCODE_P,
-            "interact": sdl2.SDL_SCANCODE_E,
+            "interact": sdl2.SDL_SCANCODE_UP,
         }
         for k, v in defaults.items():
             KEY_BINDINGS_DEFAULT[k] = v

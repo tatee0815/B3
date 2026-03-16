@@ -20,7 +20,7 @@ class Player(Entity):
         self.mana = progress.get("mana", 50)
         self.mana_warning_timer = 0
         self.mana_warning_duration = 1.0  # Thời gian hiển thị cảnh báo thiếu mana (giây)
-        self.gold = progress.get("gold", 0)
+        self.gold = progress.get("coin", 0)
         self.invincible_time = 0.0   # Thời gian bất tử (giây)
         self.invincible_duration = 2.0        # Thời gian bất tử sau khi bị đánh (giây)
         self.knockback_vel_x = 0.0 # Vận tốc knockback theo trục X (bật lùi)
@@ -55,10 +55,13 @@ class Player(Entity):
         self.recoil_timer = 0
         self.recoil_force = 5 # Độ mạnh của lực bật lùi
 
-        self.debug_mode = False # Đổi thành False để ẩn khung đỏ khi xong
+        self.debug_mode = True # Đổi thành False để ẩn khung đỏ khi xong
         
         self.is_respawning = False
         self.state = "idle"
+
+        self.speech_text = ""
+        self.speech_timer = 0.0
 
         if "playing" in self.game.states:
             level_spawn = self.game.states["playing"].level.get_spawn_position()
@@ -185,6 +188,7 @@ class Player(Entity):
         if self.attack_cooldown_timer > 0: self.attack_cooldown_timer -= delta_time
         if self.mana_warning_timer > 0: self.mana_warning_timer -= delta_time
         if self.invincible_time > 0: self.invincible_time -= delta_time
+        if self.speech_timer > 0: self.speech_timer -= delta_time
 
         # --- 2. LOGIC TẤN CÔNG (ACTIVE FRAMES) ---
         if self.is_attacking:
@@ -335,10 +339,9 @@ class Player(Entity):
         
         if hasattr(self.game, 'lives'):
             self.game.lives -= 1
+            self.game.player_progress["lives"] = self.game.lives
             if self.game.lives <= 0:
-                print("Hết mạng! Game Over!")
-                self.game.change_state("game_over") # Chuyển thẳng ra màn hình Game Over
-                return
+                self.game.change_state("fail")
 
         if 'total_deaths' in self.game.player_progress:
             self.game.player_progress['total_deaths'] += 1
@@ -394,7 +397,7 @@ class Player(Entity):
         if self.invincible_time > 0:
             # Nhấp nháy mỗi 100ms
             if (sdl2.timer.SDL_GetTicks() // 100) % 2 == 0:
-                return # Bỏ qua frame này không vẽ
+                return 
         
         if self.mana_warning_timer > 0:
             # Tính toán vị trí: Trên đầu nhân vật một chút
@@ -412,6 +415,20 @@ class Player(Entity):
                     text_y, 
                     (80, 180, 255) # Màu xanh Mana cho đồng bộ
                 )
+        
+        if self.speech_timer > 0 and self.speech_text:
+            offset_y = (self.mana_warning_duration - self.mana_warning_timer) / 20
+            text_x = self.rect.x - camera.x
+            text_y = self.rect.y - camera.y - 30 - offset_y
+
+            if hasattr(self.game, 'hud'):
+                # Vẽ chữ trắng, cách đầu player khoảng 40 pixel
+                self.game.hud._draw_text(
+                    renderer, self.speech_text, 
+                    text_x, text_y,
+                    (255, 255, 255)
+                )
+
         # Ép kiểu int cho tất cả các tham số truyền vào SDL_Rect
         draw_x = int(self.rect.x - camera.x)
         draw_y = int(self.rect.y - camera.y)
@@ -434,6 +451,10 @@ class Player(Entity):
             atk_draw = sdl2.SDL_Rect(atk_x, atk_y, atk_w, atk_h)
             sdl2.SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255)
             sdl2.SDL_RenderDrawRect(renderer, atk_draw)
+
+    def show_speech(self, text, duration=None):
+        self.speech_text = text
+        self.speech_timer = duration if duration is not None else self.mana_warning_duration
 
     def collides_with(self, other):
         return sdl2.SDL_HasIntersection(self.rect, other.rect)

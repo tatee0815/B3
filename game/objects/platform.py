@@ -38,20 +38,6 @@ class Platform(Entity):
         sdl2.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 150)
         sdl2.SDL_RenderDrawRect(renderer, dst_rect)
 
-class OneWayPlatform(Platform):
-    def __init__(self, game, x, y, w=TILE_SIZE, h=TILE_SIZE):
-        super().__init__(game, x, y, w, h)
-        self.color = COLORS["light_green"] # Màu xanh mờ
-
-    def resolve_collision(self, player, delta_time=None):
-        player_bottom = player.rect.y + player.rect.h
-        if player.vel_y > 0 and player_bottom <= self.rect.y + 6:
-            if sdl2.SDL_HasIntersection(player.rect, self.rect):
-                player.rect.y = self.rect.y - player.rect.h
-                player.pos_y = float(player.rect.y)
-                player.vel_y = 0
-                player.on_ground = True
-
 class MovingPlatform(Platform):
     def __init__(self, game, x, y, w=TILE_SIZE*3, h=TILE_SIZE, speed=2.0):
         super().__init__(game, x, y, w, h)

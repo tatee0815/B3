@@ -18,6 +18,7 @@ from game.states.setting import SettingState
 from game.states.playing import PlayingState
 from game.states.pause import PauseState
 from game.states.win import WinState
+from game.states.cutsence import CutsceneState
 from game.ui.hud import HUD
 from game.states.game_over import GameOverState
 
@@ -61,12 +62,15 @@ class Game:
             "double_jump": False,
             "skill_a_upgraded": False,
             "total_deaths": 0,
-            "high_score": 0
+            "high_score": 0,
+            "play_time": 0.0,
+            "checkpoint": None,
+            "coin": 0,          # ← THÊM
+            "lives": MAX_LIVES  # ← THÊM
         }
         self.player_progress = load_game(self.player_progress)
-        self.lives = MAX_LIVES
 
-        self.reset_progress()
+        self.lives = self.player_progress.get("lives", MAX_LIVES)
 
         # Camera & HUD
         self.camera = Camera(self, SCREEN_WIDTH, SCREEN_HEIGHT)
@@ -103,7 +107,9 @@ class Game:
         self.states["pause"] = PauseState(self)
         self.states["game_over"] = GameOverState(self)
         self.states["win"] = WinState(self)
-
+        self.states["intro"] = CutsceneState(self, mode = "intro")
+        self.states["outro"] = CutsceneState(self, mode = "outro")
+        self.states["fail"] = CutsceneState(self, mode="fail")
     def change_state(self, state_name, **kwargs):
         if state_name not in self.states:
             print(f"State '{state_name}' không tồn tại!")
@@ -173,6 +179,7 @@ class Game:
             self.current_state.update(delta_time)
 
         if self.current_state.name == "playing":
+            self.player_progress["play_time"] += delta_time
             player = self.states["playing"].player
             if player:
                 self.camera.update(player)
@@ -180,15 +187,20 @@ class Game:
     def reset_progress(self):
         self.player_progress = {
             "current_level": "level1_forest",
-            "hp": PLAYER_MAX_HP,
-            "mana": MANA_MAX,
-            "gold": 0,
+            "unlocked_skills": ["melee"],
             "double_jump": False,
+            "skill_a_upgraded": False,
             "total_deaths": 0,
-            "unlocked_skills": []
+            "unlocked_skills": [],
+            "play_time": 0.0,  # Thêm dòng này
+            "checkpoint": None, # Thêm để reset điểm hồi sinh
+            "coin": 0,          # ← THÊM
+            "lives": MAX_LIVES  # ← THÊM
         }
         # Nếu bạn có hệ thống lives (mạng)
         self.lives = MAX_LIVES
+        if "playing" in self.states:
+            self.states["playing"].is_initialized = False
 
     def render(self):
         sdl2.SDL_SetRenderDrawColor(self.renderer, 0, 0, 0, 255)

@@ -14,27 +14,21 @@ class PlayingState:
     def on_enter(self, **kwargs):
         force_reset = kwargs.get("reset", False)
         menu_continue = kwargs.get("menu_continue", False)
-
-        # from game.objects.checkpoint import Checkpoint
-        # self.test_checkpoint = Checkpoint(self.game, 500, 1000)
+        from_intro = kwargs.get("from_intro", False)
         
         # Nếu chọn "Bắt đầu mới" hoặc chưa khởi tạo, tiến hành nạp lại từ đầu
-        if not self.is_initialized or force_reset:
+        if from_intro or not self.is_initialized or force_reset:
             
-            # QUAN TRỌNG: Reset dữ liệu trong class Game trước
             if force_reset:
                 self.game.reset_progress()
             
-            # Sau đó mới nạp Level và Player
             level_name = self.game.player_progress["current_level"]
             
             if self.level.load_from_json(level_name):
                 from game.entities.player import Player
-                # Khi khởi tạo Player(self.game), nó sẽ đọc HP từ 
-                # constants hoặc từ self.game.player_progress đã được reset
                 self.player = Player(self.game)
                 
-                # Reset các thông số vật lý
+                # Spawn tại vị trí gốc của level (KHÔNG dùng checkpoint)
                 spawn_pos = self.level.get_spawn_position()
                 self.player.rect.x, self.player.rect.y = spawn_pos
                 self.player.pos_x, self.player.pos_y = float(spawn_pos[0]), float(spawn_pos[1])
@@ -43,99 +37,90 @@ class PlayingState:
                 
                 self.level.spawn_all_entities(self.game)
                 self.is_initialized = True
-            return # Kết thúc hàm sau khi đã xử lý reset hoặc nạp mới
-                
-        # Nếu là "Tiếp tục" và đã có player, chỉ cần đưa về checkpoint
-        if menu_continue:
-            if self.player:
-                self.player.respawn(self.player.checkpoint_pos)
-                # Reset camera để tránh bị giật hình
+
+                # Đảm bảo checkpoint bị xóa khi đi qua Intro (tránh lặp lỗi cũ)
+                self.game.player_progress["checkpoint"] = None
+
+                # Camera reset ngay
                 if hasattr(self.game, 'camera'):
                     self.game.camera.reset()
+            return   # ← Kết thúc block để tránh chạy code phía dưới
+
+        # === TIẾP TỤC TỪ MENU (có checkpoint) ===
+        if menu_continue and self.player and self.game.player_progress.get("checkpoint") is not None:
+            checkpoint_pos = self.game.player_progress["checkpoint"]
+            self.player.respawn(checkpoint_pos)
+            self.player.checkpoint_pos = checkpoint_pos
+            if hasattr(self.game, 'camera'):
+                self.game.camera.reset()
             return
 
-        if self.is_initialized and not force_reset:
+        # === Camera điều chỉnh bình thường (trường hợp khác) ===
+        if self.is_initialized and not force_reset and not menu_continue:
             if hasattr(self.game, 'camera'):
-                # Đặt camera ngay tại tâm player thay vì gọi reset() về 0
                 self.game.camera.x = self.player.rect.x - self.game.camera.width // 2
                 self.game.camera.y = self.player.rect.y - self.game.camera.height // 2
-                # Ràng buộc lại để không vượt biên map ngay từ frame đầu
                 self.game.camera.update(self.player)
         
     def update(self, delta_time):
         if not self.player or not self.level:
             return
 
-        # 1. Update vị trí các Platform di chuyển trước
-        if hasattr(self.level, 'platforms'):
-            for plat in self.level.platforms:
-                if hasattr(plat, 'update'):
-                    plat.resolve_collision(self.player, delta_time)
-
-        # 2. Cho Player di chuyển (áp dụng vận tốc, trọng lực) 
-        # nhưng CHƯA gọi level.handle_collision bên trong player.update
-        self.player.update(delta_time, self.level) 
-
-        # 3. Ưu tiên kiểm tra va chạm với Platform trước
-        # Nếu đứng trên platform thành công, on_ground sẽ thành True
-        if hasattr(self.level, 'platforms'):
-            for plat in self.level.platforms:
-                plat.resolve_collision(self.player, delta_time)
-
-        # 4. Chỉ xử lý va chạm với Level (gạch) nếu chưa đứng vững trên Platform
-        # Điều này ngăn việc sàn gạch bên dưới "hút" nhân vật xuyên qua platform
-
+        # 1. Update tất cả entities trước (enemy, projectile, moving platform, v.v.)
         self.level.update_entities(delta_time)
 
+        # 2. Update player (di chuyển, gravity, input) – KHÔNG xử lý collision ở đây
+        self.player.update(delta_time, self.level)
+
+        # 3. Xử lý va chạm với platform (ưu tiên cao nhất)
+        if hasattr(self.level, 'platforms'):
+            for plat in self.level.platforms:
+                if hasattr(plat, 'resolve_collision'):
+                    plat.resolve_collision(self.player, delta_time)
+
+        # 5. Va chạm player - enemy (sau khi vị trí đã ổn định)
         for enemy in self.level.enemies[:]:
             if enemy.alive and sdl2.SDL_HasIntersection(self.player.rect, enemy.rect):
-                # Xác định hướng bật lùi
                 knock_dir = -1 if self.player.rect.x < enemy.rect.x else 1
-                self.player.take_damage(enemy.damage, knock_dir)   # ← Gọi hàm mới
+                self.player.take_damage(enemy.damage, knock_dir)
                 
-                # Quái cũng bật lùi nhẹ (tăng tính chân thực)
+                # Enemy bật lùi nhẹ
                 enemy.direction *= -1
                 enemy.vel_x = -knock_dir * 4.0
-                enemy.pos_x += enemy.vel_x * 5
-        
-        # Camera bám theo player
+                enemy.pos_x += enemy.vel_x * 5  # đẩy xa thêm tí cho đẹp
+
+        # 6. Camera bám player
         if hasattr(self.game, 'camera'):
             self.game.camera.update(self.player)
 
+        # 7. Kiểm tra thắng level
         if self.level.check_win(self.player):
             current_lv = self.game.player_progress.get("current_level", "level1_forest")
             
+            # Sync progress trước khi chuyển
+            self.game.player_progress["coin"] = self.player.gold
+            self.game.player_progress["lives"] = self.game.lives
+            self.game.player_progress["checkpoint"] = None  # ← XÓA CHECKPOINT CŨ KHI CHUYỂN LEVEL
+
             if current_lv == "level1_forest":
                 print(">>> Chuyển sang Level 2: Hang Đá Lửa")
-                # 1. Cập nhật tên level mới vào progress
                 self.game.player_progress["current_level"] = "level2_lava"
-                
-                # 2. Đánh dấu để on_enter nạp lại level
-                self.is_initialized = False 
-                
-                # 3. Gọi chuyển state nhưng KHÔNG dùng reset=True (vì sẽ bị reset về Level 1)
+                self.is_initialized = False
                 self.game.change_state("playing", reset=False)
             else:
-                # Nếu không còn level nào tiếp theo thì mới thắng game
                 self.is_initialized = False
                 self.game.change_state("win")
 
+        # 8. Projectile va chạm enemy (để ở cuối cho an toàn)
         projectiles = [e for e in self.level.entities if isinstance(e, Projectile)]
-
-        for proj in projectiles:
+        for proj in projectiles[:]:  # dùng [:] để tránh lỗi modify list khi die
             if not proj.alive: continue
             for enemy in self.level.enemies:
                 if enemy.alive and sdl2.SDL_HasIntersection(proj.rect, enemy.rect):
-                    # Gây sát thương và đẩy lùi nhẹ quái
                     enemy.take_damage(proj.damage)
                     enemy.vel_x = proj.direction * 5.0
-                    
-                    # Đạn chạm quái thì tan biến luôn
                     proj.die()
                     break
-
-        # if hasattr(self, 'test_checkpoint') and self.player:
-        #     self.test_checkpoint.update(self.player)
 
     def render(self, renderer):
         # Clear screen với màu nền của level

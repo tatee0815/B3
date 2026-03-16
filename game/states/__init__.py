@@ -8,10 +8,13 @@ from .playing import PlayingState
 from .pause import PauseState
 from .game_over import GameOverState
 from .win import WinState
+from .cutsence import CutsceneState
 
 __all__ = [
     "MenuState",
     "PlayingState",
     "PauseState",
+    "GameOverState",
     "WinState",
+    "CutsceneState"
 ]

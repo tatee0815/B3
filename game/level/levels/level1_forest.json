@@ -57,12 +57,10 @@
     {"type": "chest", "x": 400, "y": 1184, "unlock": "dash"},
     {"type": "chest", "x": 800, "y": 1184, "unlock": "skill_a"},
     {"type": "chest", "x": 1200, "y": 1184, "unlock": "double_jump"},
-    {"type": "skeleton", "x": 400, "y": 1180},
-    {"type": "firebat", "x": 600, "y": 1180},
-    {"type": "goblin", "x": 600, "y": 1180},
     {"type": "heart", "x": 1000, "y": 1180},
     {"type": "mana", "x": 1400, "y": 1180},
+    {"type": "moving_platform", "x": 500, "y": 1200, "w": 96, "h": 20, "speed": 3.0},
     {"type": "princess", "x": 1600, "y": 1180},
-    {"type": "eportal", "x": 1700, "y": 1150}
+    {"type": "BossShadowKing", "x": 1700, "y": 1050}
   ]
 }

@@ -3,11 +3,12 @@ import sdl2
 import json
 import os
 from game.constants import TILE_SIZE, SCREEN_WIDTH, SCREEN_HEIGHT, GRAVITY
-from game.entities.enemy import Goblin, Skeleton, FireBat, BossShadowKing
+from game.entities.enemy import Goblin, Skeleton, FireBat
 from game.entities.collectible import Coin, Collectible, ManaBottle, Heart, Princess
+from game.entities.boss_shadow_king import BossShadowKing
 from game.objects.breakable import BreakableBox
 from game.objects.checkpoint import Checkpoint
-from game.objects.platform import Platform, OneWayPlatform, MovingPlatform
+from game.objects.platform import Platform, MovingPlatform
 
 class Level:
     def __init__(self, game):
@@ -251,8 +252,6 @@ class Level:
                 p_h = e.get("h", self.tile_size)
                 if etype == "platform":
                     self.platforms.append(Platform(game, x, y, p_w, p_h))
-                elif etype == "one_way_platform":
-                    self.platforms.append(OneWayPlatform(game, x, y, p_w, p_h))
                 elif etype == "moving_platform":
                     self.platforms.append(MovingPlatform(game, x, y, p_w, p_h, speed=e.get("speed", 2.0)))
                 
@@ -281,14 +280,17 @@ class Level:
                 unlock = e.get("unlock", None)
                 self.entities.append(Chest(game, x, y, unlock_skill=unlock))
                 
-            # Projectile sẽ được thêm động trong skill_a_fire()
+            elif etype == "BossShadowKing":
+                boss = BossShadowKing(self.game, e['x'], e['y'])  # vị trí tùy level
+                self.entities.append(boss)
+                self.enemies.append(boss)
+                # Projectile sẽ được thêm động trong skill_a_fire()
     
     def spawn_enemy(self, enemy_type: str, x: int, y: int):
         """
         Spawn một quái vật tại vị trí (x, y) bất kỳ lúc nào.
         Trả về đối tượng enemy để có thể thao tác thêm (ví dụ: set HP, velocity...).
         """
-        from game.entities.enemy import Goblin, Skeleton, FireBat, BossShadowKing
         
         enemy = None
         etype = enemy_type.lower()
@@ -316,27 +318,6 @@ class Level:
         
         print(f"[Level] Đã spawn {enemy_type} tại ({x}, {y})")
         return enemy
-    
-    def spawn_enemies(self, enemies_list: list):
-        """
-        Spawn nhiều quái cùng lúc (dùng cho wave, khu vực nguy hiểm...).
-        Ví dụ: spawn_enemies([("goblin", 1400, 900), ("skeleton", 1550, 900)])
-        """
-        spawned = []
-        for etype, x, y in enemies_list:
-            enemy = self.spawn_enemy(etype, x, y)
-            if enemy:
-                spawned.append(enemy)
-        return spawned
-    
-    def is_solid_at(self, x, y):
-        """Kiểm tra có gạch đặc không (cho quái patrol)"""
-        col = int(x // TILE_SIZE)
-        row = int(y // TILE_SIZE)
-        if 0 <= row < len(self.tiles) and 0 <= col < len(self.tiles[row]):
-            tile_id = self.tiles[row][col]
-            return tile_id in [1, 2]
-        return False
 
     def update_entities(self, delta_time):
         player = self.game.states["playing"].player
@@ -438,6 +419,17 @@ class Level:
             elif min_overlap == overlap_right:
                 player.rect.x += overlap_right
                 player.pos_x = float(player.rect.x)
+
+    def is_solid_at(self, x, y):
+        # Chuyển tọa độ pixel thành tọa độ tile
+        tile_x = int(x // self.tile_size)
+        tile_y = int(y // self.tile_size)
+
+        if tile_x < 0 or tile_x >= self.width or tile_y < 0 or tile_y >= self.height:
+            return True 
+
+        tile_value = self.tiles[tile_y][tile_x]
+        return tile_value >= 1
 
     def render_entities(self, renderer, camera):
         """Vẽ tất cả entities theo thứ tự Z-Index để đảm bảo tính thống nhất"""

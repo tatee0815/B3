@@ -1,8 +1,28 @@
 import sdl2
 import math
 import random
+
+from game.entities import player
+
 from .base import Entity
 from game.constants import GRAVITY, TILE_SIZE, COLORS
+
+ENEMY_QUOTES = {
+    "detected": [
+        "Đứng lại đó!", "Ngươi là ai?!", "Có kẻ xâm nhập!", 
+        "Thịt người kìa!", "Đừng hòng chạy thoát!", "Chết đi!"
+    ],
+    "hit": [
+        "Á!", "Đau quá!", "Tên khốn!", "Chờ đấy!", 
+        "Hự!", "Này thì chém!", "Không thể nào!"
+    ],
+    "hit_head": ["KHÔNG! Điểm yếu của ta!", "Ngươi gan lắm!"],
+    "hit_body": ["Vô ích thôi!", "Giáp ta quá dày!"],
+    "slash_warn": ["TA SE XE NAT NGUOI!"], 
+    "fire_warn": ["HOA NGUC TROI DAY!"],     
+    "idle": ["Ngươi chi co the thoi sao?"],
+    "lightning_warn": ["THIEN LOI PHAT! (Tìm khe hở mau!)"],
+}
 
 MANA_PER_KILL = 15
 
@@ -22,8 +42,24 @@ class Enemy(Entity):
         self.is_chasing = False
         self.is_flying = False 
 
+        self.speech_text = ""
+        self.death_timer = 0.0
+        self.speech_timer = 0.0
+        self.speech_duration = 2.0 # Hiện chữ trong 2 giây
+        self.has_spoken_detected = False
+
+    def show_speech(self, category):
+        """Kích hoạt hiển thị lời thoại ngẫu nhiên"""
+        self.speech_text = random.choice(ENEMY_QUOTES[category])
+        self.speech_timer = self.speech_duration
+
     def update(self, delta_time, level):
-        if not self.alive: return
+        if not self.alive:
+                return
+
+        # Xử lý timer lời thoại
+        if self.speech_timer > 0:
+            self.speech_timer -= delta_time
 
         if self.knockback_timer > 0:
             self.knockback_timer -= delta_time
@@ -53,11 +89,23 @@ class Enemy(Entity):
 
     def _has_line_of_sight(self, player, level):
         """Kiểm tra đường thẳng nối giữa quái và player có bị cản bởi tường không"""
+        dx = player.rect.x - self.rect.x
+
+        if (self.direction > 0 and dx < 0) or (self.direction < 0 and dx > 0):
+            # Trừ khi đã vào trạng thái đuổi (is_chasing), còn đi tuần thì không thấy sau lưng
+            if not self.is_chasing:
+                return False
+
         x1, y1 = self.rect.x + self.rect.w//2, self.rect.y + self.rect.h//2
         x2, y2 = player.rect.x + player.rect.w//2, player.rect.y + player.rect.h//2
-        for i in range(1, 4):
-            if level.is_solid_at(x1 + (x2 - x1) * (i / 3), y1 + (y2 - y1) * (i / 3)):
-                return False
+        steps = 25
+        for i in range(1, steps):
+            check_x = x1 + (x2 - x1) * (i / steps)
+            check_y = y1 + (y2 - y1) * (i / steps)
+            if  level.is_solid_at(check_x, check_y) or \
+                level.is_solid_at(check_x + 2, check_y) or \
+                level.is_solid_at(check_x - 2, check_y):
+                    return False
         return True
 
     def _check_ledge_or_wall(self, level):
@@ -100,25 +148,52 @@ class Enemy(Entity):
     def take_damage(self, amount, knockback_dir=0):
         if not self.alive: return
         self.hp -= amount
+        self.show_speech("hit")
+        
+        # --- FIX: Khi bị đánh, lập tức quay lại nhìn và dí player ---
+        playing_state = self.game.states.get("playing")
+        player = playing_state.player if playing_state else None
+        
+        if player:
+            self.is_chasing = True
+            # Reset cờ thoại để khi bắt đầu đuổi mới nói (tránh spam khi đang bị chém)
+            self.has_spoken_detected = True 
+            
+            # Quay mặt về phía player
+            dx = player.rect.x - self.rect.x
+            if dx != 0:
+                self.direction = 1 if dx > 0 else -1
+
         if knockback_dir != 0:
             self.knockback_timer = 0.2
             self.vel_x = knockback_dir * 5.0
             self.vel_y = -3.0
+            
         if self.hp <= 0: self.die()
 
     def die(self):
         if not self.alive: return
         self.alive = False
+        
         playing_state = self.game.states.get("playing")
         if playing_state:
             playing_state.player.mana = min(100, playing_state.player.mana + MANA_PER_KILL)
-            if self in playing_state.level.entities: playing_state.level.entities.remove(self)
+            # Quái chết là biến mất luôn cho nhẹ máy
+            if self in playing_state.level.entities:
+                playing_state.level.entities.remove(self)
 
     def render(self, renderer, camera):
         if not self.alive: return
+        
         draw_rect = sdl2.SDL_Rect(int(self.rect.x - camera.x), int(self.rect.y - camera.y), self.rect.w, self.rect.h)
-        sdl2.SDL_SetRenderDrawColor(renderer, *self.color)
+        sdl2.SDL_SetRenderDrawColor(renderer, self.color[0], self.color[1], self.color[2], 255)
         sdl2.SDL_RenderFillRect(renderer, draw_rect)
+
+        # Vẽ lời thoại
+        if self.speech_timer > 0 and self.speech_text:
+            if hasattr(self.game, 'hud'):
+                self.game.hud._draw_text(renderer, self.speech_text, 
+                                       draw_rect.x - 20, draw_rect.y - 30, (255, 255, 255))
 
 # ==================== CLASS CHI TIẾT ====================
 
@@ -139,11 +214,16 @@ class Goblin(Enemy):
         # --- LOGIC PHÁT HIỆN ---
         # Nếu Player ở gần (250px) và cùng mặt phẳng (dy < 60) và có Line of Sight
         if abs_dx < 250 and abs(dy) < 60 and self._has_line_of_sight(player, level):
-            self.is_chasing = True
+            if not self.is_chasing:
+                self.is_chasing = True
+                if not getattr(self, 'has_spoken_detected', False):
+                    self.show_speech("detected")
+                    self.has_spoken_detected = True
         else:
-            # Nếu chạy quá xa (350px) thì Goblin bỏ cuộc, quay lại đi tuần
-            if abs_dx > 350 or abs(dy) > 100:
-                self.is_chasing = False
+            if abs_dx > 350:
+                if not self.has_spoken_detected:
+                    self.is_chasing = False
+                    self.has_spoken_detected = False
 
         # --- THỰC THI DI CHUYỂN ---
         if self.is_chasing:
@@ -193,6 +273,13 @@ class Skeleton(Enemy):
         
         # Phát hiện player
         if abs_dx < 250 and self._has_line_of_sight(player, level):
+            # LỜI THOẠI: Chỉ nói 1 lần khi bắt đầu nhìn thấy
+            if not self.is_chasing:
+                self.is_chasing = True
+                if not getattr(self, 'has_spoken_detected', False):
+                    self.show_speech("detected")
+                    self.has_spoken_detected = True
+            
             self.direction = 1 if dx > 0 else -1
             
             # Nếu lọt vào tầm vung kiếm
@@ -203,6 +290,11 @@ class Skeleton(Enemy):
             else:
                 self.vel_x = self.direction * 1.5
         else:
+            # Khi player chạy mất hút, reset cờ để lần sau gặp lại nói tiếp
+            if abs_dx > 400:
+                self.is_chasing = False
+                self.has_spoken_detected = False
+                
             self._check_ledge_or_wall(level)
             self.vel_x = self.patrol_speed * self.direction
 
@@ -279,9 +371,15 @@ class FireBat(Enemy):
         if not self.is_chasing:
             if dist_sq < self.view_range**2 and self._has_line_of_sight(player, level):
                 self.is_chasing = True
+                # LỜI THOẠI: Chỉ nói 1 lần khi bắt đầu đuổi
+                if not getattr(self, 'has_spoken_detected', False) and self.speech_timer <= 0:
+                    self.show_speech("detected")
+                    self.has_spoken_detected = True
         else:
-            if dist_sq > (self.view_range + 100)**2:
+            # Khoảng cách để quái mất dấu (view_range + 50)
+            if not self._has_line_of_sight(player, level) or dist_sq > (self.view_range + 50)**2:
                 self.is_chasing = False
+                self.has_spoken_detected = False
 
         if self.is_chasing:
             self.direction = 1 if dx > 0 else -1
@@ -296,7 +394,7 @@ class FireBat(Enemy):
             else:
                 self.vel_x = 0
                 # TẤN CÔNG: Bắn đạn hướng về phía Player
-                if self.attack_timer <= 0:
+                if self.attack_timer <= 0 and self._has_line_of_sight(player, level):
                     self._shoot_at_player(player, level)
                     self.attack_timer = self.attack_cooldown
         else:
@@ -322,21 +420,6 @@ class FireBat(Enemy):
         fireball = EnemyFireball(self.game, start_x, start_y, dir_x, dir_y, self.damage)
         level.entities.append(fireball)
 
-class BossShadowKing(Enemy):
-    def __init__(self, game, x, y):
-        super().__init__(game, x, y, hp=200, damage=1)
-        self.rect.w, self.rect.h = 64, 64
-        self.color = (100, 0, 150, 255)
-        self.patrol_speed = 0.6
-
-    def _update_ai_state(self, player, level):
-        # Boss không sợ vực, cứ thế lù lù tiến tới
-        dx = player.rect.x - self.rect.x
-        self.direction = 1 if dx > 0 else -1
-        self.vel_x = self.patrol_speed * self.direction
-        if sdl2.SDL_HasIntersection(self.rect, player.rect):
-            player.take_damage(self.damage, self.direction)
-
 class EnemyFireball(Entity):
     def __init__(self, game, x, y, dir_x, dir_y, damage):
         super().__init__(game, x, y, 12, 12) # Đạn nhỏ hơn tí cho dễ né
@@ -355,6 +438,10 @@ class EnemyFireball(Entity):
         
         self.rect.x = int(self.pos_x)
         self.rect.y = int(self.pos_y)
+
+        if level.is_solid_at(self.rect.x + self.rect.w//2, self.rect.y + self.rect.h//2):
+            self.alive = False
+            return
         
         self.life_time -= delta_time
         

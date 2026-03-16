@@ -11,7 +11,7 @@ class WinState:
         self.timer = 0.0
 
     def on_exit(self):
-        pass
+        self.game.reset_progress()
 
     def update(self, delta_time):
         pass
@@ -28,9 +28,19 @@ class WinState:
         sdl2.SDL_SetRenderDrawColor(renderer, 40, 120, 200, 255) # Xanh hy vọng
         sdl2.SDL_RenderClear(renderer)
 
-        self._draw_text(renderer, self.game.title_font, "CHIẾN THẮNG!", w//2, h//2 - 60, (255, 215, 0))
-        self._draw_text(renderer, self.game.font, "Bạn đã cứu được công chúa!", w//2, h//2 + 20, (255, 255, 255))
+        self._draw_text(renderer, self.game.title_font, "TRÒ CHƠI KẾT THÚC!", w//2, h//2 - 60, (255, 215, 0))
+        self._draw_text(renderer, self.game.font, "Bạn đã hoàn thành trò chơi!", w//2, h//2 + 20, (255, 255, 255))
         self._draw_text(renderer, self.game.font, "Nhấn phím ENTER để về Menu", w//2, h - 100, (200, 255, 200))
+
+        p = self.game.player_progress
+        mins = int(p["play_time"] // 60)
+        secs = int(p["play_time"] % 60)
+        
+        # Vẽ các thông số cuối game
+        y_offset = h // 2 + 50
+        self._draw_text(renderer, self.game.font, f"Vàng thu thập: {p.get('coin', 0)}", w//2, y_offset+ 20, (255, 255, 0))
+        self._draw_text(renderer, self.game.font, f"Mạng còn lại: {p.get('lives', 3)}", w//2, y_offset + 60, (0, 255, 0))
+        self._draw_text(renderer, self.game.font, f"Thời gian: {mins:02d}:{secs:02d}", w//2, y_offset + 100, (255, 255, 255))
 
         sdl2.SDL_RenderSetScale(renderer, self.game.scale_x, self.game.scale_y)
 

@@ -28,10 +28,10 @@ from .constants import (
 # Import các class chính (cho phép import kiểu: from game import Player, Level)
 from .entities.base import Entity
 from .entities.player import Player
-from .entities.enemy import Enemy, Goblin, Skeleton, FireBat, BossShadowKing
+from .entities.enemy import Enemy, Goblin, Skeleton, FireBat
 from .entities.projectile import Projectile
 
-from .objects.platform import Platform, MovingPlatform, OneWayPlatform
+from .objects.platform import Platform, MovingPlatform
 from .objects.breakable import BreakableBox
 from game.entities.collectible import Collectible, Heart, Coin, ManaBottle
 from .objects.checkpoint import Checkpoint

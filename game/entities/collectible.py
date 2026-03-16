@@ -3,10 +3,16 @@ Các đối tượng thu thập (collectible) - item nhặt được từ thùng
 """
 
 import math
+import random
 import sdl2
 from game.constants import TILE_SIZE, COLORS
 from .base import Entity
 
+PLAYER_COLLECT_QUOTES = {
+    "heart": ["Hồi phục nào!", "Cảm thấy khỏe hơn rồi.", "Hú hồn!", "Tim nè!", "Vẫn còn trụ được."],
+    "coin": ["Vàng kìa!", "Giàu to rồi!", "Lụm lúa!", "Thêm chút tiền tiêu vặt.", "Keng keng!"],
+    "mana": ["Năng lượng tràn trề!", "Phép thuật lên ngôi.", "Mana đây rồi!", "Tiếp thêm sức mạnh."]
+}
 
 class Collectible(Entity):
     """
@@ -73,12 +79,10 @@ class Heart(Collectible):
 
         if self.collected: return  # tránh collect nhiều lần
         self.collected = True
-
-        if player.hp < PLAYER_MAX_HP:
-            player.hp += 1
-            print(f"Nhặt tim! HP hiện tại: {player.hp}")
-        else:
-            print("HP đã đầy!")
+        player.hp += 1
+        if hasattr(player, 'show_speech'):
+            player.show_speech(random.choice(PLAYER_COLLECT_QUOTES["heart"]))
+        self.kill()  # loại bỏ khỏi game sau khi nhặt
 
 class Coin(Collectible):
     """Thu thập vàng"""
@@ -95,7 +99,10 @@ class Coin(Collectible):
         if self.collected: return  # tránh collect nhiều lần
         self.collected = True
         player.gold += self.value
-        print(f"+{self.value} vàng → {player.gold}")
+
+        self.game.player_progress["coin"] = player.gold
+        if hasattr(player, 'show_speech'):
+            player.show_speech(random.choice(PLAYER_COLLECT_QUOTES["coin"]))
         self.kill()  # loại bỏ khỏi game sau khi nhặt
 
 class ManaBottle(Collectible):
@@ -111,7 +118,9 @@ class ManaBottle(Collectible):
         if self.collected: return  # tránh collect nhiều lần
         self.collected = True
         player.mana = min(player.mana + self.value, 100)
-        print(f"+{self.value} mana → {player.mana}/100")
+        if hasattr(player, 'show_speech'):
+            player.show_speech(random.choice(PLAYER_COLLECT_QUOTES["mana"]))
+        self.kill()  # loại bỏ khỏi game sau khi nhặt
 
 class Princess(Entity):
     """Công chúa - Thực thể tương tác để kết thúc game"""
@@ -140,10 +149,7 @@ class Princess(Entity):
             return
             
         self.is_rescued = True
-        print("Công chúa: 'Cảm ơn hiệp sĩ đã cứu thiếp!'")
-        
-        # Chuyển trạng thái sang màn hình chiến thắng
-        self.game.change_state("win")
+        self.game.change_state("outro")
 
     def render(self, renderer, camera):
         draw_rect = sdl2.SDL_Rect(
@@ -170,6 +176,6 @@ class Princess(Entity):
                 if hasattr(self.game, 'hud'):
                     # Hiển thị text hướng dẫn ngay trên đầu Công chúa
                     self.game.hud._draw_text(
-                        renderer, "Nhấn E để Giải Cứu", 
+                        renderer, "Nhấn UP để Giải Cứu", 
                         draw_rect.x - 30, draw_rect.y - 30, (255, 255, 255)
                     )

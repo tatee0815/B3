@@ -7,7 +7,7 @@ class Entity:
         self.renderer = game.renderer
 
         # Tạo SDL_Rect (struct C, dùng cho collision và render)
-        self.rect = sdl2.SDL_Rect(x, y, w, h)
+        self.rect = sdl2.SDL_Rect(int(x), int(y), int(w), int(h))
         self.pos_x = float(x) # Biến lưu tọa độ thực
         self.pos_y = float(y)
         self.vel_x = 0.0

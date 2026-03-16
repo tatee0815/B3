@@ -31,6 +31,9 @@ class Chest:
             player.checkpoint_pos = (float(self.rect.x), float(self.rect.y - 20))
             print(f"Đã lưu Checkpoint tại rương {self.unlock_skill}!")
 
+            # 2. Lưu vào progress để Menu "Tiếp tục" nhận ra
+            self.game.player_progress["checkpoint"] = player.checkpoint_pos
+
             # 2. Mở khóa kỹ năng
             progress = self.game.player_progress
             if self.unlock_skill:
@@ -69,11 +72,11 @@ class Chest:
         sdl2.SDL_SetRenderDrawColor(renderer, 255, 215, 0, 255)
         sdl2.SDL_RenderDrawRect(renderer, draw_rect)
 
-        # Trổ tài vẽ chữ "Nhấn E" lơ lửng trên rương
+        # Trổ tài vẽ chữ "Nhấn UP để mở" lơ lửng trên rương
         if self.show_prompt and not self.opened:
             font = self.game.font
             if font:
-                text = "Nhấn E"
+                text = "Nhấn UP để mở"  # Hướng dẫn tương tác
                 sdl_color = sdl2.SDL_Color(255, 255, 255, 255)
                 surf = ttf.TTF_RenderUTF8_Blended(font, text.encode('utf-8'), sdl_color)
                 if surf:
