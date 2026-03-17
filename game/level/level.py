@@ -337,7 +337,9 @@ class Level:
 
         # 3. UPDATE VÀ XỬ LÝ CÁC ENTITIES KHÁC
         for entity in self.entities[:]:
-            if hasattr(entity, 'alive') and not entity.alive:
+            if (hasattr(entity, 'alive') and not entity.alive and 
+                not getattr(entity, 'is_dead_body', False)) or \
+                (hasattr(entity, 'life_time') and entity.life_time <= 0):
                 self.entities.remove(entity)
                 continue
 
@@ -436,7 +438,9 @@ class Level:
         sorted_entities = sorted(self.entities, key=lambda e: getattr(e, 'z_index', 1))
         
         for entity in sorted_entities:
-            if hasattr(entity, 'alive') and not entity.alive:
+            if (hasattr(entity, 'alive') and not entity.alive and 
+                not getattr(entity, 'is_dead_body', False)):
                 continue
+            
             if hasattr(entity, 'render'):
                 entity.render(renderer, camera)

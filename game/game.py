@@ -86,6 +86,8 @@ class Game:
         self.running = True
         self.delta_time = 0.0
         self.game_time = 0.0
+        self.slowmo_timer = 0.0
+        self.slowmo_factor = 1.0
 
     def _init_fonts(self):
         """Khởi tạo thư viện và nạp font hệ thống"""
@@ -172,14 +174,22 @@ class Game:
                     self.current_state.handle_input(event)
 
     def update(self, delta_time):
-        self.delta_time = delta_time
-        self.game_time += delta_time
+        if self.slowmo_timer > 0:
+            self.slowmo_timer -= delta_time
+            effective_delta = delta_time * self.slowmo_factor
+            if self.slowmo_timer <= 0:
+                self.slowmo_factor = 1.0
+        else:
+            effective_delta = delta_time
+
+        self.delta_time = effective_delta
+        self.game_time += effective_delta
 
         if self.current_state:
-            self.current_state.update(delta_time)
+            self.current_state.update(effective_delta)
 
         if self.current_state.name == "playing":
-            self.player_progress["play_time"] += delta_time
+            self.player_progress["play_time"] += effective_delta
             player = self.states["playing"].player
             if player:
                 self.camera.update(player)
@@ -241,6 +251,11 @@ class Game:
             self.render()
 
         self.on_quit()
+
+    def trigger_slowmo(self, duration=3.5, strength=0.35):
+        """Kích hoạt slow-motion toàn game"""
+        self.slowmo_timer = duration
+        self.slowmo_factor = strength
 
     def on_quit(self):
         print("Game đang thoát... Lưu tiến độ.")

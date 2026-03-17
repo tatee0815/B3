@@ -10,6 +10,8 @@ class Camera:
         self.height = height
         self.smooth_factor = 0.1 
 
+        self.zoom_factor = 1.15
+
     def update(self, player):
         # Tính toán tâm Player
         p_center_x = player.rect.x + (player.rect.w // 2)

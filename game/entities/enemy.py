@@ -3,7 +3,7 @@ import math
 import random
 
 from game.entities import player
-
+from game.utils.assets import AssetManager
 from .base import Entity
 from game.constants import GRAVITY, TILE_SIZE, COLORS
 
@@ -21,7 +21,11 @@ ENEMY_QUOTES = {
     "slash_warn": ["TA SE XE NAT NGUOI!"], 
     "fire_warn": ["HOA NGUC TROI DAY!"],     
     "idle": ["Ngươi chi co the thoi sao?"],
-    "lightning_warn": ["THIEN LOI PHAT! (Tìm khe hở mau!)"],
+    "lightning_warn": ["THIEN LOI PHAT!"],
+    "death": [
+        "Ta... sẽ... trở lại...", "Không thể nào!", "Hự...", 
+        "Ước gì chưa đi làm quái...", "Lương thấp quá mà...", "Hẹn gặp lại ở địa ngục!"
+    ],
 }
 
 MANA_PER_KILL = 15
@@ -36,6 +40,7 @@ class Enemy(Entity):
         self.direction = 1
         self.color = [200, 50, 50, 255]
         self.alive = True
+        self.is_dead_body = False # Trạng thái xác chết
         
         # === STATUS & PHYSICS ===
         self.knockback_timer = 0.0
@@ -54,8 +59,16 @@ class Enemy(Entity):
         self.speech_timer = self.speech_duration
 
     def update(self, delta_time, level):
+        if self.is_dead_body:
+            self.death_timer -= delta_time
+            if self.death_timer <= 0:
+                playing_state = self.game.states.get("playing")
+                if playing_state and self in playing_state.level.entities:
+                    playing_state.level.entities.remove(self)
+            return
+
         if not self.alive:
-                return
+            return
 
         # Xử lý timer lời thoại
         if self.speech_timer > 0:
@@ -121,7 +134,7 @@ class Enemy(Entity):
                 self.direction *= -1
                 return True
         return False
-
+    
     def _resolve_collision(self, level, is_y):
         start_row = max(0, self.rect.y // TILE_SIZE)
         end_row = min(len(level.tiles), (self.rect.y + self.rect.h) // TILE_SIZE + 1)
@@ -172,28 +185,35 @@ class Enemy(Entity):
         if self.hp <= 0: self.die()
 
     def die(self):
-        if not self.alive: return
-        self.alive = False
+        if not self.alive or self.is_dead_body: return
         
+        self.alive = False
+        self.is_dead_body = True
+        self.death_timer = 2.0  # Để lại xác trong 2 giây
+        
+        # Ngừng mọi chuyển động
+        self.vel_x = 0
+        self.vel_y = 0
+        
+        self.show_speech("death")
+
         playing_state = self.game.states.get("playing")
         if playing_state:
             playing_state.player.mana = min(100, playing_state.player.mana + MANA_PER_KILL)
-            # Quái chết là biến mất luôn cho nhẹ máy
-            if self in playing_state.level.entities:
-                playing_state.level.entities.remove(self)
 
     def render(self, renderer, camera):
-        if not self.alive: return
-        
-        draw_rect = sdl2.SDL_Rect(int(self.rect.x - camera.x), int(self.rect.y - camera.y), self.rect.w, self.rect.h)
-        sdl2.SDL_SetRenderDrawColor(renderer, self.color[0], self.color[1], self.color[2], 255)
-        sdl2.SDL_RenderFillRect(renderer, draw_rect)
-
-        # Vẽ lời thoại
+        # Vẽ lời thoại - đặt ngoài để hiển thị cả khi là xác chết
         if self.speech_timer > 0 and self.speech_text:
             if hasattr(self.game, 'hud'):
-                self.game.hud._draw_text(renderer, self.speech_text, 
-                                       draw_rect.x - 20, draw_rect.y - 30, (255, 255, 255))
+                # Tăng offset lên để chữ không bị chồng lên xác
+                y_offset = -50 if self.is_dead_body else -30
+                self.game.hud._draw_text(
+                    renderer,
+                    self.speech_text,
+                    int(self.rect.x - camera.x),
+                    int(self.rect.y - camera.y + y_offset),
+                    (255, 255, 255)
+                )
 
 # ==================== CLASS CHI TIẾT ====================
 
@@ -205,6 +225,12 @@ class Goblin(Enemy):
         self.patrol_speed = 0.8
         self.chase_speed = self.patrol_speed * 1.5  # Tốc độ khi phát hiện player
         self.is_chasing = False
+
+        self.state = "goblin_walk"
+        self.anim_frame = 0
+        self.anim_timer = 0.0
+
+        self.death_alpha = 255
 
     def _update_ai_state(self, player, level):
         dx = player.rect.x - self.rect.x
@@ -221,9 +247,8 @@ class Goblin(Enemy):
                     self.has_spoken_detected = True
         else:
             if abs_dx > 350:
-                if not self.has_spoken_detected:
-                    self.is_chasing = False
-                    self.has_spoken_detected = False
+                self.is_chasing = False
+                self.has_spoken_detected = False
 
         # --- THỰC THI DI CHUYỂN ---
         if self.is_chasing:
@@ -243,6 +268,67 @@ class Goblin(Enemy):
         if sdl2.SDL_HasIntersection(self.rect, player.rect):
             player.take_damage(self.damage, self.direction)
 
+    def update(self, delta_time, level):
+        if self.is_dead_body:
+            self.state = "goblin_death"
+            self.death_alpha = max(0, int((self.death_timer / 2.0) * 255))
+            self._update_anim_frame(delta_time)
+            super().update(delta_time, level)
+            return
+
+        self._update_anim_frame(delta_time)
+
+        # Chọn state animation
+        if self.is_dead_body:
+            self.state = "goblin_death"
+        elif abs(self.vel_x) > 0.1:
+            self.state = "goblin_walk"
+        else:
+            self.state = "goblin_idle"
+
+        super().update(delta_time, level)
+
+    def _update_anim_frame(self, delta_time):
+        self.anim_timer += delta_time
+        if self.anim_timer > 0.15:           # tốc độ frame ~8-9 fps
+            self.anim_timer -= 0.15
+            self.anim_frame += 1
+
+    def render(self, renderer, camera):
+        texture, srcrect = AssetManager.get_anim_info(self.state, self.anim_frame)
+
+        if texture:
+            sprite_w = 48
+            sprite_h = 48
+
+            offset_x = 0
+            if self.direction < 0:
+                offset_x = sprite_w - self.rect.w  # sửa flip cho đẹp
+
+            draw_x = int(self.rect.x - camera.x - offset_x)
+            draw_y = int(self.rect.y - camera.y - (sprite_h - self.rect.h))
+
+            dstrect = sdl2.SDL_Rect(draw_x, draw_y, sprite_w, sprite_h)
+
+            flip = sdl2.SDL_FLIP_NONE if self.direction >= 0 else sdl2.SDL_FLIP_HORIZONTAL
+
+            if self.is_dead_body:
+                sdl2.SDL_SetTextureAlphaMod(texture, self.death_alpha)
+            else:
+                # Đảm bảo quái còn sống luôn có Alpha tối đa
+                sdl2.SDL_SetTextureAlphaMod(texture, 255)
+
+            sdl2.SDL_RenderCopyEx(
+                renderer, texture, srcrect, dstrect,
+                0, None, flip
+            )
+
+            if self.is_dead_body:
+                sdl2.SDL_SetTextureAlphaMod(texture, 255)
+
+        # Vẽ lời thoại (gọi super)
+        super().render(renderer, camera)
+
 class Skeleton(Enemy):
     def __init__(self, game, x, y):
         # Body Hitbox: Cho chiều rộng (w) hẹp lại thành 20 để giống bộ xương hơn
@@ -254,8 +340,14 @@ class Skeleton(Enemy):
         
         # Tầm xa của kiếm (Sword Reach)
         self.attack_range = 60 
-        # Độ dày của lưỡi kiếm khi chém xuống (Sword Thickness)
         self.sword_width = 15 
+
+        # --- PHẦN THÊM SPRITE ---
+        self.state = "skeleton_walk"
+        self.anim_frame = 0
+        self.anim_timer = 0
+
+        self.death_alpha = 255
 
     def _update_ai_state(self, player, level):
         if self.attack_timer > 0: self.attack_timer -= 1/60
@@ -279,7 +371,8 @@ class Skeleton(Enemy):
                 if not getattr(self, 'has_spoken_detected', False):
                     self.show_speech("detected")
                     self.has_spoken_detected = True
-            
+
+            self.is_chasing = True
             self.direction = 1 if dx > 0 else -1
             
             # Nếu lọt vào tầm vung kiếm
@@ -301,15 +394,17 @@ class Skeleton(Enemy):
     def _perform_sword_slash(self, player):
         """Tạo ra một Hitbox thanh kiếm hẹp để kiểm tra va chạm"""
         self.attack_timer = 2.0 # Cooldown sau khi chém xong
-        
-        # Tính toán vị trí của lưỡi kiếm dựa trên hướng nhìn
-        # Kiếm sẽ vươn từ mép của Skeleton ra phía trước
-        sword_x = self.rect.x + self.rect.w if self.direction > 0 else self.rect.x - self.attack_range
-        
+        if self.direction > 0:
+            sword_x = self.rect.x + self.rect.w
+            sword_y = self.rect.y + 10          # chém ngang ngực
+        else:
+            sword_x = self.rect.x - self.attack_range
+            sword_y = self.rect.y + 10
+
         # Tạo Rect giả lập lưỡi kiếm (Hẹp và dài)
         sword_hitbox = sdl2.SDL_Rect(
             int(sword_x), 
-            int(self.rect.y + 10), # Kiếm chém ở tầm ngang ngực
+            int(sword_y), # Kiếm chém ở tầm ngang ngực
             self.attack_range, 
             self.sword_width
         )
@@ -319,33 +414,85 @@ class Skeleton(Enemy):
             player.take_damage(self.damage, self.direction)
 
     def render(self, renderer, camera):
-        # 1. Vẽ thân hình Skeleton (hẹp)
-        super().render(renderer, camera)
+        # 1. Vẽ Sprite
+        texture, srcrect = AssetManager.get_anim_info(self.state, self.anim_frame)
+    
+        if texture:
+            sprite_w = 48
+            sprite_h = 48
+
+            offset_x = 0
+            if self.direction < 0:
+                offset_x = sprite_w - self.rect.w  # đẩy sprite sang phải khi nhìn trái
+
+            draw_x = int(self.rect.x - camera.x - offset_x)
+            draw_y = int(self.rect.y - camera.y - (sprite_h - self.rect.h))
+
+            dstrect = sdl2.SDL_Rect(draw_x, draw_y, sprite_w, sprite_h)
+            
+            if self.is_dead_body:
+                sdl2.SDL_SetTextureAlphaMod(texture, self.death_alpha)
+            
+            flip = sdl2.SDL_FLIP_NONE if self.direction >= 0 else sdl2.SDL_FLIP_HORIZONTAL
+            sdl2.SDL_RenderCopyEx(renderer, texture, srcrect, dstrect, 0, None, flip)
+            
+            if self.is_dead_body:
+                sdl2.SDL_SetTextureAlphaMod(texture, 255)
+
+        # 2. Vẽ Debug Hitbox kiếm (Chỉ khi còn sống)
+        if not self.is_dead_body:
+            if self.prep_timer > 0 or (self.attack_timer > 1.3):
+                self._render_sword_debug(renderer, camera)
         
-        # 2. DEBUG HITBOX KIẾM
-        # Khi đang gồng (Vàng) hoặc vừa chém xong (Đỏ)
-        if self.prep_timer > 0 or (self.attack_timer > 1.3):
-            # Màu vàng khi đang gồng, màu đỏ khi đang vung kiếm
-            debug_color = (255, 255, 0, 255) if self.prep_timer > 0 else (255, 0, 0, 255)
-            sdl2.SDL_SetRenderDrawColor(renderer, *debug_color)
-            
-            # Vị trí hiển thị trên màn hình
-            sword_x = self.rect.x + self.rect.w if self.direction > 0 else self.rect.x - self.attack_range
-            
-            # Vẽ đường kẻ đại diện cho thanh kiếm
-            sword_render_rect = sdl2.SDL_Rect(
-                int(sword_x - camera.x),
-                int(self.rect.y + 15 - camera.y),
-                self.attack_range,
-                self.sword_width
-            )
-            
-            if self.prep_timer > 0:
-                # Vẽ khung rỗng khi đang gồng
-                sdl2.SDL_RenderDrawRect(renderer, sword_render_rect)
-            else:
-                # Vẽ đặc khi đang gây sát thương
-                sdl2.SDL_RenderFillRect(renderer, sword_render_rect)
+        # 3. Vẽ lời thoại (Gọi hàm cha)
+        super().render(renderer, camera)
+
+    def _render_sword_debug(self, renderer, camera):
+        debug_color = (255, 255, 0, 255) if self.prep_timer > 0 else (255, 0, 0, 255)
+        sdl2.SDL_SetRenderDrawColor(renderer, *debug_color)
+        
+        sword_x = self.rect.x + self.rect.w if self.direction > 0 else self.rect.x - self.attack_range
+        sword_render_rect = sdl2.SDL_Rect(
+            int(sword_x - camera.x),
+            int(self.rect.y + 15 - camera.y),
+            self.attack_range,
+            self.sword_width
+        )
+        if self.prep_timer > 0:
+            sdl2.SDL_RenderDrawRect(renderer, sword_render_rect)
+        else:
+            sdl2.SDL_RenderFillRect(renderer, sword_render_rect)
+
+    def update(self, delta_time, level):
+        # Nếu đã chết (được die() set is_dead_body = True)
+        if self.is_dead_body:
+            self.state = "skeleton_death"
+            # Mờ dần dựa trên death_timer của lớp Enemy cha (2.0s)
+            self.death_alpha = max(0, int((self.death_timer / 2.0) * 255))
+            self._update_anim_frame(delta_time)
+            super().update(delta_time, level)
+            return
+
+        # Cập nhật animation frame
+        self._update_anim_frame(delta_time)
+        
+        # Quyết định State và Hướng nhìn
+        if self.prep_timer > 0:
+            self.state = "skeleton_attack"
+        elif abs(self.vel_x) > 0.1:
+            self.state = "skeleton_walk"
+            # FIX: Luôn cập nhật direction theo vận tốc thực tế
+            self.direction = 1 if self.vel_x > 0 else -1
+        else:
+            self.state = "skeleton_idle"
+
+        super().update(delta_time, level)
+
+    def _update_anim_frame(self, delta_time):
+        self.anim_timer += delta_time
+        if self.anim_timer > 0.1:
+            self.anim_timer = 0
+            self.anim_frame += 1
 
 class FireBat(Enemy):
     def __init__(self, game, x, y):
@@ -355,6 +502,12 @@ class FireBat(Enemy):
         self.color = (255, 100, 0, 255)
         self.attack_timer = 0
         self.is_chasing = False
+
+        # --- Animation ---
+        self.state = "firebat_walk"      
+        self.anim_frame = 0
+        self.anim_timer = 0.0
+        self.anim_speed = 0.12
         
         # --- CÂN CHỈNH ---
         self.attack_cooldown = 3.5  # Bắn chậm lại (3.5 giây/phát)
@@ -420,6 +573,71 @@ class FireBat(Enemy):
         fireball = EnemyFireball(self.game, start_x, start_y, dir_x, dir_y, self.damage)
         level.entities.append(fireball)
 
+    def _update_anim_frame(self, delta_time):
+        self.anim_timer += delta_time
+        if self.anim_timer > self.anim_speed:
+            self.anim_timer -= self.anim_speed
+            self.anim_frame += 1
+
+    def update(self, delta_time, level):
+        if self.is_dead_body:
+            self.state = "firebat_death"
+            self.death_timer -= delta_time  # nếu có fade
+            self._update_anim_frame(delta_time)
+            super().update(delta_time, level)
+            return
+
+        self._update_anim_frame(delta_time)
+
+        # Chọn state dựa trên hành động
+        if self.is_dead_body:
+            self.state = "firebat_death"
+        elif self.attack_timer <= 0 and self.is_chasing:
+            self.state = "firebat_attack"  # nếu có animation attack riêng
+        else:
+            self.state = "firebat_walk"     # bay bình thường
+
+        super().update(delta_time, level)
+
+    def render(self, renderer, camera):
+        texture, srcrect = AssetManager.get_anim_info(self.state, self.anim_frame)
+        if not texture:
+            # Fallback vẽ hình chữ nhật nếu sprite lỗi
+            super().render(renderer, camera)  # hoặc vẽ màu cam
+            return
+
+        # Kích thước frame (điều chỉnh nếu khác 32x32)
+        sprite_w = 32
+        sprite_h = 32
+
+        # Offset để căn giữa (vì rect 24x24, sprite lớn hơn một chút)
+        offset_x = (sprite_w - self.rect.w) // 2
+        offset_y = (sprite_h - self.rect.h) // 2  # hoặc -10 nếu cánh dưới thấp
+
+        draw_x = int(self.rect.x - camera.x - offset_x)
+        draw_y = int(self.rect.y - camera.y - offset_y)
+
+        dstrect = sdl2.SDL_Rect(draw_x, draw_y, sprite_w, sprite_h)
+
+        # Flip theo hướng bay
+        flip = sdl2.SDL_FLIP_HORIZONTAL if self.direction < 0 else sdl2.SDL_FLIP_NONE
+
+        # Nếu chết thì fade alpha (tương tự Goblin)
+        if self.is_dead_body:
+            alpha = int((self.death_timer / 2.0) * 255) if hasattr(self, 'death_timer') else 255
+            sdl2.SDL_SetTextureAlphaMod(texture, max(0, alpha))
+
+        sdl2.SDL_RenderCopyEx(
+            renderer, texture, srcrect, dstrect,
+            0, None, flip
+        )
+
+        # Reset alpha nếu cần
+        if self.is_dead_body:
+            sdl2.SDL_SetTextureAlphaMod(texture, 255)
+
+        # Vẽ lời thoại / debug nếu có
+        super().render(renderer, camera)
 class EnemyFireball(Entity):
     def __init__(self, game, x, y, dir_x, dir_y, damage):
         super().__init__(game, x, y, 12, 12) # Đạn nhỏ hơn tí cho dễ né

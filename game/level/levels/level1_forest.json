@@ -61,6 +61,7 @@
     {"type": "mana", "x": 1400, "y": 1180},
     {"type": "moving_platform", "x": 500, "y": 1200, "w": 96, "h": 20, "speed": 3.0},
     {"type": "princess", "x": 1600, "y": 1180},
-    {"type": "BossShadowKing", "x": 1700, "y": 1050}
+    {"type": "BossShadowKing", "x": 1200, "y": 1050},
+    {"type": "firebat", "x": 500, "y": 1050}
   ]
 }

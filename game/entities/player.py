@@ -4,6 +4,7 @@ from game.constants import (
     GRAVITY, PLAYER_MAX_HP, MANA_MAX, 
     SKILL_A_COST, KEY_BINDINGS_DEFAULT
 )
+from game.utils.assets import AssetManager
 from .base import Entity
 from .projectile import Projectile
 
@@ -66,6 +67,11 @@ class Player(Entity):
         if "playing" in self.game.states:
             level_spawn = self.game.states["playing"].level.get_spawn_position()
             self.checkpoint_pos = level_spawn
+
+        AssetManager.load_all_player_sprites(game.renderer)
+        self.anim_frame = 0
+        self.anim_timer = 0
+        self.anim_speed = 0.1 # Tốc độ chuyển frame (giây)
 
     def handle_input(self, event):
         """Xử lý phím dựa trên KEY_BINDINGS_DEFAULT"""
@@ -159,6 +165,13 @@ class Player(Entity):
         
         if self.mana >= SKILL_A_COST:
             self.mana -= SKILL_A_COST
+
+            # Kích hoạt hoạt ảnh kỹ năng
+            self.state = "skill"
+            self.anim_frame = 0
+            self.is_attacking = True # Tận dụng cờ này để khóa các hành động khác
+            self.attack_timer = 0.4 # Thời gian hoạt ảnh skill lâu hơn chém thường
+            
             self.skill_a_fire()
         else:
             self.mana_warning_timer = self.mana_warning_duration
@@ -189,7 +202,18 @@ class Player(Entity):
         if self.mana_warning_timer > 0: self.mana_warning_timer -= delta_time
         if self.invincible_time > 0: self.invincible_time -= delta_time
         if self.speech_timer > 0: self.speech_timer -= delta_time
+        # Tính toán animation frame
+        self.anim_timer += delta_time
+        
+        current_anim_speed = 0.12  # Tốc độ mặc định cho Idle/Run
+        if self.state == "skill":
+            current_anim_speed = 0.05 # Số càng nhỏ hoạt ảnh chạy càng nhanh
+        elif self.state == "attack":
+            current_anim_speed = 0.08 # Tốc độ chém thường
 
+        if self.anim_timer >= current_anim_speed:
+            self.anim_timer = 0
+            self.anim_frame += 1
         # --- 2. LOGIC TẤN CÔNG (ACTIVE FRAMES) ---
         if self.is_attacking:
             self.attack_timer -= delta_time
@@ -352,7 +376,10 @@ class Player(Entity):
         self.is_respawning = False
 
     def _update_state(self):
-        if self.is_attacking: self.state = "attack"
+        if self.is_attacking: 
+            if self.state not in ["attack", "skill"]:
+                self.state = "attack"
+            return
         elif self.is_dashing: self.state = "dash"
         elif not self.on_ground: self.state = "jump"
         elif self.vel_x != 0: self.state = "run"
@@ -394,63 +421,65 @@ class Player(Entity):
             self.game.camera.reset()
 
     def render(self, renderer, camera):
+        # 1. Hiệu ứng nhấp nháy khi bất tử (Giữ nguyên logic cũ)
         if self.invincible_time > 0:
-            # Nhấp nháy mỗi 100ms
             if (sdl2.timer.SDL_GetTicks() // 100) % 2 == 0:
                 return 
         
+        # --- PHẦN VẼ NHÂN VẬT TỪ SPRITE SHEET ---
+        texture, srcrect = AssetManager.get_anim_info(self.state, self.anim_frame)
+
+        # Tính toán vị trí vẽ
+        draw_x = int(self.rect.x - camera.x)
+        draw_y = int(self.rect.y - camera.y)
+        
+        # Vì bộ Biker là 48x48, ta có thể vẽ to hơn hoặc giữ nguyên
+        dstrect = sdl2.SDL_Rect(draw_x, draw_y, 48, 48)
+        
+        flip = sdl2.SDL_FLIP_NONE if self.facing_right else sdl2.SDL_FLIP_HORIZONTAL
+
+        # Vẽ nhân vật
+        if texture:
+            sdl2.SDL_RenderCopyEx(renderer, texture, srcrect, dstrect, 0, None, flip)
+        
+        # 2. Logic vẽ Mana Warning (Giữ nguyên)
         if self.mana_warning_timer > 0:
-            # Tính toán vị trí: Trên đầu nhân vật một chút
-            # Cho chữ bay nhẹ lên trên theo thời gian để sinh động
             offset_y = (self.mana_warning_duration - self.mana_warning_timer) / 20
             text_x = self.rect.x - camera.x
             text_y = self.rect.y - camera.y - 30 - offset_y
             
-            # Mượn hàm vẽ text từ HUD để đảm bảo dùng đúng font UTM-Netmuc
             if hasattr(self.game, 'hud'):
                 self.game.hud._draw_text(
-                    renderer, 
-                    "Không đủ Mana!", 
-                    text_x, 
-                    text_y, 
-                    (80, 180, 255) # Màu xanh Mana cho đồng bộ
+                    renderer, "Không đủ Mana!", text_x, text_y, (80, 180, 255)
                 )
         
+        # 3. Logic vẽ Speech Text (Giữ nguyên)
         if self.speech_timer > 0 and self.speech_text:
             offset_y = (self.mana_warning_duration - self.mana_warning_timer) / 20
             text_x = self.rect.x - camera.x
             text_y = self.rect.y - camera.y - 30 - offset_y
 
             if hasattr(self.game, 'hud'):
-                # Vẽ chữ trắng, cách đầu player khoảng 40 pixel
                 self.game.hud._draw_text(
-                    renderer, self.speech_text, 
-                    text_x, text_y,
-                    (255, 255, 255)
+                    renderer, self.speech_text, text_x, text_y, (255, 255, 255)
                 )
 
-        # Ép kiểu int cho tất cả các tham số truyền vào SDL_Rect
-        draw_x = int(self.rect.x - camera.x)
-        draw_y = int(self.rect.y - camera.y)
-        draw_w = int(self.rect.w)
-        draw_h = int(self.rect.h)
-        
-        draw_rect = sdl2.SDL_Rect(draw_x, draw_y, draw_w, draw_h)
-        
-        # Vẽ hitbox nhân vật (xanh lá)
-        sdl2.SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255)
-        sdl2.SDL_RenderDrawRect(renderer, draw_rect)
+        # 4. Vẽ Hitbox Debug (Giữ nguyên)
+        if self.debug_mode:
+            # Hitbox nhân vật (xanh lá)
+            sdl2.SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255)
+            sdl2.SDL_RenderDrawRect(renderer, dstrect)
 
-        # Vẽ hitbox tấn công (đỏ) khi đang chém
-        if self.debug_mode and self.is_attacking:
-            atk_x = int(self.attack_rect.x - camera.x)
-            atk_y = int(self.attack_rect.y - camera.y)
-            atk_w = int(self.attack_rect.w)
-            atk_h = int(self.attack_rect.h)
-            
-            atk_draw = sdl2.SDL_Rect(atk_x, atk_y, atk_w, atk_h)
-            sdl2.SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255)
-            sdl2.SDL_RenderDrawRect(renderer, atk_draw)
+            # Hitbox tấn công (đỏ)
+            if self.is_attacking:
+                atk_x = int(self.attack_rect.x - camera.x)
+                atk_y = int(self.attack_rect.y - camera.y)
+                atk_w = int(self.attack_rect.w)
+                atk_h = int(self.attack_rect.h)
+                
+                atk_draw = sdl2.SDL_Rect(atk_x, atk_y, atk_w, atk_h)
+                sdl2.SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255)
+                sdl2.SDL_RenderDrawRect(renderer, atk_draw)
 
     def show_speech(self, text, duration=None):
         self.speech_text = text

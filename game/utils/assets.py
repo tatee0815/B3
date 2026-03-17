@@ -1,82 +1,84 @@
-"""
-Quản lý asset: load texture, sound, font với cache
-"""
-
 import sdl2
 import sdl2.ext
-# import sdl2.mixer
 import os
-from game.constants import ASSETS_ROOT, SPRITES_DIR, SOUNDS_DIR, FONTS_DIR
-
+from game.constants import ASSETS_ROOT
 
 class AssetManager:
-    """Singleton cache cho asset"""
     _textures = {}
-    _sounds = {}
-    _fonts = {}
+    
+    # Cấu hình số khung hình cho từng file ảnh lẻ bạn đã gửi
+    ANIM_CONFIG = {
+        # Player
+        "idle":     {"file": "sprites/hero_idle.png",   "frames": 4},
+        "run":      {"file": "sprites/hero_run.png",    "frames": 6},
+        "jump":     {"file": "sprites/hero_jump.png",   "frames": 4},
+        "attack":   {"file": "sprites/hero_attack1.png","frames": 6},
+        "skill":    {"file": "sprites/hero_attack2.png","frames": 8},
+        "death":    {"file": "sprites/hero_death.png",  "frames": 6},
+        "dash":     {"file": "sprites/hero_dash.png",   "frames": 6},
+        "mele":     {"file": "sprites/mele_attack.png", "frames": 8}, 
+        # Goblin
+        "goblin_idle":   {"file": "enemies/Scorpio_idle.png",   "frames": 4},
+        "goblin_walk":   {"file": "enemies/Scorpio_walk.png",   "frames": 4},
+        "goblin_death":  {"file": "enemies/Scorpio_death.png",  "frames": 4},
+        # Skeleton
+        "skeleton_idle":   {"file": "enemies/Mummy_idle.png",   "frames": 4},
+        "skeleton_walk":   {"file": "enemies/Mummy_walk.png",   "frames": 6},
+        "skeleton_attack": {"file": "enemies/Mummy_attack.png", "frames": 6},
+        "skeleton_death":  {"file": "enemies/Mummy_death.png",  "frames": 6},
+        # Firebat
+        "firebat_idle":     {"file": "enemies/Vulture_idle.png",    "frames": 4},
+        "firebat_walk":     {"file": "enemies/Vulture_walk.png",    "frames": 4},
+        "firebat_attack":   {"file": "enemies/Vulture_attack.png",  "frames": 2},
+        "firebat_death":    {"file": "enemies/Vulture_death.png",   "frames": 4},
+        # Boss 
+        "boss_idle":        {"file": "boss/idle.png",       "frames": 6,    "frame_w": 128, "frame_h": 128},
+        "boss_attack1":     {"file": "boss/attack_1.png",   "frames": 10,   "frame_w": 128, "frame_h": 128},
+        "boss_attack2":     {"file": "boss/attack_2.png",   "frames": 10,   "frame_w": 128, "frame_h": 128},
+        "boss_attack3":     {"file": "boss/attack_3.png",   "frames": 7,    "frame_w": 128, "frame_h": 128},
+        "boss_hurt":        {"file": "boss/hurt.png",       "frames": 2,    "frame_w": 128, "frame_h": 128}, 
+        "boss_death":       {"file": "boss/death.png",      "frames": 10,   "frame_w": 128, "frame_h": 128},
+        "boss_head":        {"file": "boss/head.png",       "frames": 8,    "frame_w": 72, "frame_h": 72}
+    }
+
+    @classmethod
+    def load_all_player_sprites(cls, renderer):
+        """Nạp tất cả các trạng thái vào cache"""
+        for state, config in cls.ANIM_CONFIG.items():
+            cls.load_texture(config["file"], renderer)
 
     @classmethod
     def load_texture(cls, path, renderer):
-        """Load PNG/BMP và cache"""
         full_path = os.path.join(ASSETS_ROOT, path)
         if full_path in cls._textures:
             return cls._textures[full_path]
         
         try:
             surface = sdl2.ext.load_image(full_path)
-            texture = sdl2.ext.Texture(renderer, surface)
+            # Dùng hàm gốc để tránh lỗi AttributeError đã gặp
+            texture = sdl2.SDL_CreateTextureFromSurface(renderer, surface)
+            sdl2.SDL_FreeSurface(surface)
             cls._textures[full_path] = texture
             return texture
         except Exception as e:
-            print(f"Không load được texture: {full_path} - {e}")
+            print(f"Lỗi nạp {full_path}: {e}")
             return None
 
     @classmethod
-    def load_sound(cls, path):
-        # """Load WAV/OGG và cache"""
-        # full_path = os.path.join(ASSETS_ROOT, path)
-        # if full_path in cls._sounds:
-        #     return cls._sounds[full_path]
+    def get_anim_info(cls, state, frame_index):
+        """Bây giờ hàm này sẽ tìm được cả 'idle' lẫn 'skeleton_idle'"""
+        config = cls.ANIM_CONFIG.get(state)
+        if not config:
+            return None, None
+            
+        texture = cls._textures.get(os.path.join(ASSETS_ROOT, config["file"]))
+        if not texture:
+            return None, None
         
-        # try:
-        #     sound = sdl2.mixer.Mix_LoadWAV(full_path.encode())
-        #     cls._sounds[full_path] = sound
-        #     return sound
-        # except Exception as e:
-            print(f"Âm thanh bị tắt tạm thời: {path}")
-            return None
+        frame_w = config.get("frame_w", 48)   # mặc định 48 cho các entity cũ
+        frame_h = config.get("frame_h", 48)
 
-    @classmethod
-    def load_font(cls, path, size=24):
-        """Load font TTF"""
-        full_path = os.path.join(ASSETS_ROOT, path)
-        key = f"{full_path}_{size}"
-        if key in cls._fonts:
-            return cls._fonts[key]
+        actual_frame = int(frame_index) % config["frames"]
+        srcrect = sdl2.SDL_Rect(actual_frame * frame_w, 0, frame_w, frame_h)
         
-        try:
-            font = sdl2.ext.FontManager(full_path, size=size)
-            cls._fonts[key] = font
-            return font
-        except Exception as e:
-            print(f"Không load được font: {full_path} - {e}")
-            return None
-
-    @classmethod
-    def get_cached_texture(cls, path):
-        full_path = os.path.join(ASSETS_ROOT, path)
-        return cls._textures.get(full_path)
-
-
-# Hàm tiện ích ngắn gọn
-def load_texture(path, renderer):
-    return AssetManager.load_texture(path, renderer)
-
-def load_sound(path):
-    return AssetManager.load_sound(path)
-
-def load_font(path, size=24):
-    return AssetManager.load_font(path, size)
-
-def get_cached_texture(path):
-    return AssetManager.get_cached_texture(path)
+        return texture, srcrect

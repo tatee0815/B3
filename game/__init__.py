@@ -44,7 +44,7 @@ from .states.playing import PlayingState
 from .ui.hud import HUD
 
 # Tiện ích thường dùng
-from .utils.assets import load_texture, load_sound
+from .utils.assets import AssetManager
 from .utils.camera import Camera
 from .utils.save import save_game, load_game
 
