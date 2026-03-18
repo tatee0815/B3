@@ -16,16 +16,16 @@ ENEMY_QUOTES = {
         "Á!", "Đau quá!", "Tên khốn!", "Chờ đấy!", 
         "Hự!", "Này thì chém!", "Không thể nào!"
     ],
-    "hit_head": ["KHÔNG! Điểm yếu của ta!", "Ngươi gan lắm!"],
-    "hit_body": ["Vô ích thôi!", "Giáp ta quá dày!"],
-    "slash_warn": ["TA SE XE NAT NGUOI!"], 
-    "fire_warn": ["HOA NGUC TROI DAY!"],     
-    "idle": ["Ngươi chi co the thoi sao?"],
-    "lightning_warn": ["THIEN LOI PHAT!"],
     "death": [
         "Ta... sẽ... trở lại...", "Không thể nào!", "Hự...", 
         "Ước gì chưa đi làm quái...", "Lương thấp quá mà...", "Hẹn gặp lại ở địa ngục!"
     ],
+    "hit_head": ["..."],
+    "hit_body": ["..."],
+    "slash_warn": ["..."], 
+    "fire_warn": ["..."],     
+    "idle": ["..."],
+    "lightning_warn": ["..."],
 }
 
 MANA_PER_KILL = 15
@@ -382,6 +382,11 @@ class Skeleton(Enemy):
                     self.prep_timer = 1 # Khựng lại chuẩn bị chém
             else:
                 self.vel_x = self.direction * 1.5
+
+                ahead_x = self.rect.x + (self.rect.w if self.direction > 0 else 0) + (self.direction * 5)
+                # Nếu phía trước không có đất (vực), dừng lại ngay
+                if not level.is_solid_at(ahead_x, self.rect.y + self.rect.h + 5):
+                    self.vel_x = 0
         else:
             # Khi player chạy mất hút, reset cờ để lần sau gặp lại nói tiếp
             if abs_dx > 400:
@@ -638,9 +643,10 @@ class FireBat(Enemy):
 
         # Vẽ lời thoại / debug nếu có
         super().render(renderer, camera)
+
 class EnemyFireball(Entity):
     def __init__(self, game, x, y, dir_x, dir_y, damage):
-        super().__init__(game, x, y, 12, 12) # Đạn nhỏ hơn tí cho dễ né
+        super().__init__(game, x, y, 15, 15) # Đạn nhỏ hơn tí cho dễ né
         self.dir_x = dir_x
         self.dir_y = dir_y
         self.damage = damage

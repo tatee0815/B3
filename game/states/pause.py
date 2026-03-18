@@ -72,7 +72,10 @@ class PauseState:
                 elif self.selected == 1:
                     self.mode = "settings_main"
                     self.selected = 0
-                elif self.selected == 2: self.game.change_state("menu")
+                elif self.selected == 2: 
+                    from game.utils.save import save_game
+                    save_game(self.game.player_progress) # Lưu lại trước khi ra Menu
+                    self.game.change_state("menu")
             
             elif self.mode == "settings_main":
                 if self.selected == 3:

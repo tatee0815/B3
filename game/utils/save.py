@@ -14,7 +14,6 @@ def save_game(progress):
     try:
         with open(SAVE_FILE, 'w', encoding='utf-8') as f:
             json.dump(progress, f, ensure_ascii=False, indent=4)
-        print("Đã lưu tiến độ game")
     except Exception as e:
         print(f"Lỗi lưu game: {e}")
 
@@ -29,7 +28,9 @@ def load_game(default_progress):
             loaded = json.load(f)
             # Merge với default để tránh thiếu key
             default_progress.update(loaded)
-            print("Đã load tiến độ game")
+            if "opened_chests" not in loaded:
+                loaded["opened_chests"] = []
+            return loaded
             return default_progress
     except Exception as e:
         print(f"Lỗi load game: {e}")

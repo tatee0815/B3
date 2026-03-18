@@ -7,7 +7,7 @@ Mini platformer 2D side-scrolling (~5-10 phút chơi) dùng PySDL2
 __version__ = "0.1.0-dev"
 
 # Tên game chính thức (dùng cho window title, save file, v.v.)
-GAME_TITLE = "Hiệp Sĩ Kiếm Huyền Thoại: Giải Cứu Công Chúa"
+GAME_TITLE = "Skibidi Hero, Bruh bruh lmao"
 GAME_SHORT_TITLE = "Knight Quest"
 
 # Import các hằng số quan trọng (dễ dùng ở mọi nơi)
@@ -34,7 +34,6 @@ from .entities.projectile import Projectile
 from .objects.platform import Platform, MovingPlatform
 from .objects.breakable import BreakableBox
 from game.entities.collectible import Collectible, Heart, Coin, ManaBottle
-from .objects.checkpoint import Checkpoint
 
 from .level.level import Level
 
@@ -48,5 +47,4 @@ from .utils.assets import AssetManager
 from .utils.camera import Camera
 from .utils.save import save_game, load_game
 
-# (Tùy chọn) Nếu muốn export một alias ngắn gọn cho class Game chính
 KnightQuestGame = Game

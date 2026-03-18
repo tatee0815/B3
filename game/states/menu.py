@@ -126,10 +126,7 @@ class MenuState:
         
         if choice == "Tiếp tục":
             # Kiểm tra nếu có file save thì mới vào game luôn, không thì vào intro
-            if self.game.player_progress.get("checkpoint") is not None:
-                self.game.change_state("playing", reset=False, menu_continue=True)
-            else:
-                self.game.change_state("intro")
+            self.game.change_state("playing", menu_continue=True)
             
         elif choice == "Bắt đầu mới":
             # Buộc PlayingState phải load lại map và reset Player về vị trí spawn gốc

@@ -55,15 +55,18 @@ class Game:
         self.is_paused = False
         self.last_time = sdl2.timer.SDL_GetTicks()
 
+        self.player = None
+
         # Progress người chơi
         self.player_progress = {
-            "current_level": "level1_forest",
+            "current_level": "level1_village",
             "unlocked_skills": ["melee"],
             "double_jump": False,
             "skill_a_upgraded": False,
             "total_deaths": 0,
             "high_score": 0,
             "play_time": 0.0,
+            "opened_chests": [],
             "checkpoint": None,
             "coin": 0,          # ← THÊM
             "lives": MAX_LIVES  # ← THÊM
@@ -89,6 +92,10 @@ class Game:
         self.slowmo_timer = 0.0
         self.slowmo_factor = 1.0
 
+    def setup(self):
+        from game.entities.player import Player
+        self.player = Player(self)
+
     def _init_fonts(self):
         """Khởi tạo thư viện và nạp font hệ thống"""
         if ttf.TTF_Init() == -1:
@@ -112,6 +119,7 @@ class Game:
         self.states["intro"] = CutsceneState(self, mode = "intro")
         self.states["outro"] = CutsceneState(self, mode = "outro")
         self.states["fail"] = CutsceneState(self, mode="fail")
+        
     def change_state(self, state_name, **kwargs):
         if state_name not in self.states:
             print(f"State '{state_name}' không tồn tại!")
@@ -196,18 +204,18 @@ class Game:
                 
     def reset_progress(self):
         self.player_progress = {
-            "current_level": "level1_forest",
+            "current_level": "level1_village",
             "unlocked_skills": ["melee"],
             "double_jump": False,
             "skill_a_upgraded": False,
             "total_deaths": 0,
             "unlocked_skills": [],
-            "play_time": 0.0,  # Thêm dòng này
-            "checkpoint": None, # Thêm để reset điểm hồi sinh
-            "coin": 0,          # ← THÊM
-            "lives": MAX_LIVES  # ← THÊM
+            "play_time": 0.0, 
+            "opened_chests": [],
+            "checkpoint": None, 
+            "coin": 0,          
+            "lives": MAX_LIVES 
         }
-        # Nếu bạn có hệ thống lives (mạng)
         self.lives = MAX_LIVES
         if "playing" in self.states:
             self.states["playing"].is_initialized = False
@@ -258,5 +266,10 @@ class Game:
         self.slowmo_factor = strength
 
     def on_quit(self):
-        print("Game đang thoát... Lưu tiến độ.")
+        # Nếu đang trong trạng thái chơi, hãy lấy checkpoint cuối cùng của player gán vào progress
+        if self.current_state.name == "playing":
+            player = self.states["playing"].player
+            if player and hasattr(player, 'checkpoint_pos'):
+                self.player_progress["checkpoint"] = player.checkpoint_pos
+                
         save_game(self.player_progress)

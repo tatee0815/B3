@@ -56,7 +56,7 @@ class Player(Entity):
         self.recoil_timer = 0
         self.recoil_force = 5 # Độ mạnh của lực bật lùi
 
-        self.debug_mode = True # Đổi thành False để ẩn khung đỏ khi xong
+        self.debug_mode = False # Đổi thành False để ẩn khung đỏ khi xong
         
         self.is_respawning = False
         self.state = "idle"
@@ -78,6 +78,10 @@ class Player(Entity):
         scancode = event.key.keysym.scancode
         
         if event.type == sdl2.SDL_KEYDOWN:
+            # --- DEBUG CHEAT KEYS ---
+            if scancode == sdl2.SDL_SCANCODE_F1:
+                self.activate_cheat_mode()
+            # ------------------------
             if self.is_dashing:
                 return # Không nhận input mới khi đang dash để tránh xung đột
             if scancode == KEY_BINDINGS_DEFAULT["left"]:
@@ -128,28 +132,33 @@ class Player(Entity):
     def melee_attack(self):
         if self.attack_cooldown_timer <= 0 and not self.is_dashing:
             self.is_attacking = True
+            self.is_using_skill = False
             self.attack_timer = self.ATTACK_DURATION
             self.attack_cooldown_timer = self.ATTACK_COOLDOWN
             self.state = "attack"
             self.hit_enemies = []
 
     def _update_attack_hitbox(self):
-        """Hàm dùng chung để tính toán vị trí hitbox tấn công"""
-        # Cấu hình: Hẹp (16px) nhưng Xa (65px)
+        """Tính toán vị trí hitbox và cập nhật frame cho hiệu ứng chém"""
         attack_range = 65  
         attack_height = 16 
         
-        # Tính toán tọa độ X dựa trên hướng nhìn
         if self.facing_right:
-            ax = self.rect.x + self.rect.w 
+            ax = self.rect.x + self.rect.w -10
         else:
-            ax = self.rect.x - attack_range
-            
-        # Căn giữa theo trục Y của nhân vật
+            ax = self.rect.x - 55 # điều chỉnh để khi quay sang trái thì đều nhau
+                
         ay = self.rect.y + (self.rect.h // 2) - (attack_height // 2)
-        
-        # Cập nhật trực tiếp vào thuộc tính của object
         self.attack_rect = sdl2.SDL_Rect(int(ax), int(ay), int(attack_range), int(attack_height))
+
+        # Tính toán frame cho sprite 'mele' (có 8 frames theo file assets của bạn)
+        # Chúng ta dùng tỷ lệ thời gian còn lại của đòn đánh
+        total_mele_frames = 8
+        progress = 1.0 - (self.attack_timer / self.ATTACK_DURATION)
+        self.mele_anim_frame = int(progress * total_mele_frames)
+        
+        if self.mele_anim_frame >= total_mele_frames:
+            self.mele_anim_frame = total_mele_frames - 1
                     
     def apply_recoil(self):
         self.recoil_timer = 0.15 
@@ -170,6 +179,7 @@ class Player(Entity):
             self.state = "skill"
             self.anim_frame = 0
             self.is_attacking = True # Tận dụng cờ này để khóa các hành động khác
+            self.is_using_skill = True
             self.attack_timer = 0.4 # Thời gian hoạt ảnh skill lâu hơn chém thường
             
             self.skill_a_fire()
@@ -340,9 +350,8 @@ class Player(Entity):
     
     def take_damage(self, amount, knockback_dir=1):
         """Player bị quái đánh - đã tích hợp invincible + knockback"""
-        if self.is_respawning or self.invincible_time > 0:
+        if self.is_respawning or self.invincible_time > 0 or self.debug_mode :
             return  # Không nhận sát thương khi đang hồi sinh hoặc bất tử
-        
         self.hp -= amount
         print(f"Player take damage! HP còn: {self.hp}")
         
@@ -432,9 +441,12 @@ class Player(Entity):
         # Tính toán vị trí vẽ
         draw_x = int(self.rect.x - camera.x)
         draw_y = int(self.rect.y - camera.y)
+        render_w, render_h = 48, 48
+        dst_x = draw_x - (render_w - self.rect.w) // 2
+        dst_y = draw_y - (render_h - self.rect.h) -2
         
         # Vì bộ Biker là 48x48, ta có thể vẽ to hơn hoặc giữ nguyên
-        dstrect = sdl2.SDL_Rect(draw_x, draw_y, 48, 48)
+        dstrect = sdl2.SDL_Rect(dst_x, dst_y, render_w, render_h)
         
         flip = sdl2.SDL_FLIP_NONE if self.facing_right else sdl2.SDL_FLIP_HORIZONTAL
 
@@ -442,6 +454,24 @@ class Player(Entity):
         if texture:
             sdl2.SDL_RenderCopyEx(renderer, texture, srcrect, dstrect, 0, None, flip)
         
+        # Vẽ hiệu ứng attack
+        if self.is_attacking and not getattr(self, "is_using_skill", False):
+            # Lấy thông tin animation cho 'mele' từ AssetManager
+            mele_tex, mele_srcrect = AssetManager.get_anim_info("mele", self.mele_anim_frame)
+            
+            if mele_tex:
+                # Vị trí vẽ dựa trên attack_rect đã tính ở update
+                m_draw_x = int(self.attack_rect.x - camera.x)
+                m_draw_y = int(self.attack_rect.y - camera.y)
+                
+                m_dstrect = sdl2.SDL_Rect(m_draw_x, m_draw_y, 62, 32) 
+                m_dstrect.y -= 18
+
+                if not self.facing_right:
+                    m_dstrect.x -= 0
+
+                sdl2.SDL_RenderCopyEx(renderer, mele_tex, mele_srcrect, m_dstrect, 0, None, flip)
+
         # 2. Logic vẽ Mana Warning (Giữ nguyên)
         if self.mana_warning_timer > 0:
             offset_y = (self.mana_warning_duration - self.mana_warning_timer) / 20
@@ -487,3 +517,23 @@ class Player(Entity):
 
     def collides_with(self, other):
         return sdl2.SDL_HasIntersection(self.rect, other.rect)
+
+    def activate_cheat_mode(self):
+        """Mở khóa toàn bộ kỹ năng và hồi đầy chỉ số"""
+        print("--- CHEAT MODE ACTIVATED ---")
+        
+        # 1. Mở khóa tất cả skill trong tiến trình game
+        all_skills = ["dash", "double_jump", "skill_a"]
+        self.game.player_progress["unlocked_skills"] = all_skills
+        self.game.player_progress["double_jump"] = True # Cập nhật thêm key lẻ nếu có
+        
+        # 2. Cập nhật trạng thái hiện tại của Player ngay lập tức
+        self.has_double_jump = True
+        self.can_double_jump = True
+        
+        # 3. Hồi đầy HP và Mana
+        self.hp = PLAYER_MAX_HP
+        self.mana = MANA_MAX
+        
+        # 4. Hiển thị thông báo lên màn hình game
+        self.show_speech("GOD MODE & ALL SKILLS UNLOCKED!", 3.0)

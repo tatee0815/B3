@@ -39,45 +39,61 @@ class Platform(Entity):
         sdl2.SDL_RenderDrawRect(renderer, dst_rect)
 
 class MovingPlatform(Platform):
-    def __init__(self, game, x, y, w=TILE_SIZE*3, h=TILE_SIZE, speed=2.0):
+    def __init__(self, game, x, y, w, h, speed=2.0, distance=200, is_horizontal=True):
         super().__init__(game, x, y, w, h)
-        self.speed = speed
-        self.direction = 1
-        self.is_horizontal = True
-        self.min_pos = float(x)
-        self.max_pos = float(x + 200)
         self.pos_x = float(x)
         self.pos_y = float(y)
+        self.start_x = float(x)
+        self.start_y = float(y)
+        self.speed = speed
+        self.distance = distance
+        self.direction = 1
+        self.is_horizontal = is_horizontal
+        
+        # Thiết lập giới hạn dựa trên tham số distance từ JSON
+        if self.is_horizontal:
+            self.min_pos = self.start_x
+            self.max_pos = self.start_x + self.distance
+        else:
+            self.min_pos = self.start_y
+            self.max_pos = self.start_y + self.distance
         self.color = (180, 100, 60, 255) # Màu nâu đỏ
 
     def update(self, delta_time, level=None):
-        # Lưu vị trí cũ để tính độ lệch (displacement)
-        old_x = self.pos_x
-        old_y = self.pos_y
-
-        # Tính toán di chuyển
+        old_x, old_y = self.pos_x, self.pos_y
         move = self.speed * self.direction * delta_time * 60
+
         if self.is_horizontal:
             self.pos_x += move
-            if self.pos_x <= self.min_pos or self.pos_x >= self.max_pos:
-                self.direction *= -1
-        
-        # Cập nhật Rect (dùng cho va chạm)
+            # Kiểm tra va chạm biên ngang
+            if self.pos_x >= self.max_pos:
+                self.pos_x = self.max_pos
+                self.direction = -1
+            elif self.pos_x <= self.min_pos:
+                self.pos_x = self.min_pos
+                self.direction = 1
+        else:
+            self.pos_y += move
+            # Kiểm tra va chạm biên dọc
+            if self.pos_y >= self.max_pos:
+                self.pos_y = self.max_pos
+                self.direction = -1
+            elif self.pos_y <= self.min_pos:
+                self.pos_y = self.min_pos
+                self.direction = 1
+
+        # Cập nhật Rect hiển thị
         self.rect.x = int(round(self.pos_x))
         self.rect.y = int(round(self.pos_y))
 
-        # TÍNH TOÁN ĐỘ LỆCH THỰC TẾ
+        # Kéo nhân vật đi theo (giữ nguyên logic cũ của ba)
         dx = self.pos_x - old_x
         dy = self.pos_y - old_y
-
-        # Kéo Player đi theo nếu đang đứng trên đầu
         if level:
             player = level.game.states["playing"].player
             if self.is_player_on_top(player):
-                # Cộng trực tiếp độ lệch vào tọa độ THỰC của player
                 player.pos_x += dx
                 player.pos_y += dy
-                # Cập nhật rect của player ngay lập tức để đồng bộ frame
                 player.rect.x = int(round(player.pos_x))
                 player.rect.y = int(round(player.pos_y))
 

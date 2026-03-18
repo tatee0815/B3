@@ -18,7 +18,6 @@ def main():
     """
     Hàm chính: khởi tạo và chạy game
     """
-    print("Khởi động game Hiệp Sĩ Kiếm Huyền Thoại...")
 
     # 1. Khởi tạo SDL2 core
     ret = sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO)

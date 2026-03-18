@@ -7,13 +7,14 @@ from game.constants import GRAVITY, SCREEN_WIDTH, SCREEN_HEIGHT
 from game.utils.assets import AssetManager
 
 BOSS_QUOTES = {
-    "detected": ["Ngươi dám bước vào lãnh địa của ta?", "Hahaha..."],
-    "hit_head": ["KHÔNG! Điểm yếu của ta!", "Ngươi gan lắm!"],
-    "hit_body": ["Vô ích thôi!", "Giáp ta quá dày!"],
-    "slash_warn": ["TA SE XE NAT NGUOI! (Gồng 2s)"], 
-    "fire_warn": ["HOA NGUC TROI DAY!"],     
-    "lightning_warn": ["THIEN LOI PHAT!"],
-    "idle": ["Ngươi chi co the thoi sao?"],
+    "hit_head": [
+        "KHÔNG! Điểm (G) yếu của ta!", "Ngươi gan lắm!", "YAMETE ??!!!"
+    ],
+    "hit_body": ["Ta có khiên!!", "Ngươi quá yếu!", "U i i a a", "Ngươi nên nhắm vào đầu"],
+    "slash_warn": ["TA SẼ XÉ XÁC NGƯƠI!"], 
+    "fire_warn": ["HỎA CẦU BÓNG TỐI!"],     
+    "lightning_warn": ["THIÊN LÔI PHẠT!"],
+    "idle": ["Ngươi chỉ có thế thôi sao?"],
     "death": [
         "Bóng tối... không bao giờ tắt...", 
         "Nhà vua sẽ trở lại!", 
@@ -21,12 +22,75 @@ BOSS_QUOTES = {
     ]
 }
 
+class BossFireball(EnemyFireball):
+    def __init__(self, game, x, y, vx, vy, damage):
+        # Gọi init của lớp cha để giữ nguyên logic di chuyển/va chạm
+        super().__init__(game, x, y, vx, vy, damage)
+
+        # LƯU TRỮ VẬN TỐC ĐỂ DÙNG CHO HÀM RENDER
+        self.vx = vx
+        self.vy = vy
+        
+        # === CHỈNH SỬA SPRITE RIÊNG CHO BOSS ===
+        self.anim_state = "boss_fireball" # Sử dụng key đã đăng ký ở Bước 1
+        self.anim_frame = 0
+        self.anim_timer = 0.0
+        self.anim_speed = 0.05 # Lửa rồng nên cháy nhanh và mượt
+
+    def update(self, delta_time, level):
+        # Giữ nguyên logic di chuyển của EnemyFireball
+        super().update(delta_time, level)
+        
+        # Thêm logic cập nhật animation frame
+        self.anim_timer += delta_time
+        if self.anim_timer >= self.anim_speed:
+            self.anim_timer = 0
+            self.anim_frame += 1
+            # Loop qua 14 frames rồng lửa
+            self.anim_frame %= AssetManager.ANIM_CONFIG[self.anim_state]["frames"]
+
+    def render(self, renderer, camera):
+        # Ghi đè hàm render để vẽ sprite mới
+        if not self.alive: return
+        
+        # Lấy texture và srcrect từ AssetManager
+        texture, srcrect = AssetManager.get_anim_info(self.anim_state, self.anim_frame)
+        
+        if texture:
+            # Vị trí vẽ (DSTRECT)
+            draw_x = int(self.rect.x - camera.x)
+            draw_y = int(self.rect.y - camera.y)
+            
+            # Kích thước hiển thị (Nên to hơn hitbox một chút cho uy lực)
+            scale = 2
+            render_w = 64 * scale
+            render_h = 64 * scale
+            dstrect = sdl2.SDL_Rect(draw_x, draw_y, render_w, render_h)
+            
+            # Căn chỉnh để sprite nằm giữa hitbox va chạm
+            dstrect.y -= (render_h - self.rect.h) // 2
+            
+            # Tính góc xoay dựa trên vận tốc (vx, vy) để đầu rồng hướng về phía trước
+            angle_rad = math.atan2(self.vy, self.vx)
+            angle_deg = math.degrees(angle_rad)
+            
+            # Vẽ sprite có xoay góc
+            sdl2.SDL_RenderCopyEx(renderer, texture, srcrect, dstrect, angle_deg, None, sdl2.SDL_FLIP_NONE)
+
 class BossShadowKing(Enemy):
     def __init__(self, game, x, y):
         # Khung bao quát: w=120, h=310
-        super().__init__(game, int(x), int(y), w=120, h=310, hp=100, damage=1)
+        super().__init__(game, int(x), int(y), w=120, h=310, hp=300, damage=1)
         self.z_index = 5
         self.color = (40, 0, 60, 255)
+
+        self.max_hp = 50
+        self.hp = self.max_hp
+        self.spawned_milestones = {
+            "75": False,
+            "50": False,
+            "25": False
+        }
         
         self.fixed_x = float(x)
         self.fixed_y = float(y)
@@ -160,6 +224,22 @@ class BossShadowKing(Enemy):
         if self.speech_timer > 0:
             self.speech_timer -= delta_time
 
+    def show_speech(self, category, duration=2.0):
+        # Danh sách các câu thoại quan trọng (không được ghi đè)
+        important_states = (self.action_delay > 0 or 
+                            self.slash_warning_visual > 0 or 
+                            self.is_lightning_active or 
+                            self.is_dead_body)
+        
+        # Nếu đang gồng chiêu hoặc đã chết mà lời thoại định hiển thị là "bị đánh" thì BỎ QUA
+        if important_states and category in ["hit_head", "hit_body"]:
+            return
+
+        # Nếu không bị chặn, tiến hành lấy text ngẫu nhiên và hiển thị
+        if category in BOSS_QUOTES:
+            self.speech_text = random.choice(BOSS_QUOTES[category])
+            self.speech_timer = duration
+
     def _update_anim_frame(self, delta_time):
         current_speed = self.anim_speeds.get(self.anim_state, 0.14)
 
@@ -248,6 +328,21 @@ class BossShadowKing(Enemy):
             if sdl2.SDL_HasIntersection(player.attack_rect, self.head_rect):
                 is_headshot = True
 
+        # Kiểm tra mốc 75%
+        if not self.spawned_milestones["75"] and self.hp <= (self.max_hp * 0.75):
+            self.spawn_mid_battle_items()
+            self.spawned_milestones["75"] = True
+            
+        # Kiểm tra mốc 50%
+        if not self.spawned_milestones["50"] and self.hp <= (self.max_hp * 0.50):
+            self.spawn_mid_battle_items()
+            self.spawned_milestones["50"] = True
+            
+        # Kiểm tra mốc 25%
+        if not self.spawned_milestones["25"] and self.hp <= (self.max_hp * 0.25):
+            self.spawn_mid_battle_items()
+            self.spawned_milestones["25"] = True
+
         if is_headshot:
             super().take_damage(amount, knockback_dir=0)
             self.show_speech("hit_head")
@@ -291,6 +386,7 @@ class BossShadowKing(Enemy):
             })
         
         self.game.trigger_slowmo(duration=3.5, strength=0.3)
+        self.spawn_exit_platform()
 
     def decide_attack(self, player):
         attacks = ["slash", "fire"]
@@ -332,7 +428,12 @@ class BossShadowKing(Enemy):
         base_angle = math.atan2(dy, dx)
         for spread in [-0.3, 0, 0.3]: 
             vx, vy = math.cos(base_angle + spread), math.sin(base_angle + spread)
-            fb = EnemyFireball(self.game, cx, cy, vx, vy, 1)
+            
+            # --- THAY ĐỔI TẠI ĐÂY ---
+            # Tạo BossFireball thay vì EnemyFireball
+            fb = BossFireball(self.game, cx, cy, vx, vy, 1)
+            # ----------------------
+            
             fb.speed = 4.5
             level.entities.append(fb)
         self.start_idle()
@@ -340,9 +441,49 @@ class BossShadowKing(Enemy):
     def start_idle(self):
         """Sau khi ra chiêu, nghỉ 5 giây + nhô đầu ra"""
         self.state = "idle"
+        self.show_speech("idle")
         self.idle_timer = 5.0               
         self.is_slashing = False
         self.pending_action = None
+
+    def spawn_mid_battle_items(self):
+        """Hàm spawn Heart và Mana khi Boss còn 50% máu"""
+        # ĐIỀN TỌA ĐỘ X, Y TẠI ĐÂY
+        item_x = 450 
+        item_y = random.randint(200, 350)
+        
+        level = self.game.states["playing"].level
+        # Giả sử bạn đã có class Heart và Mana trong game.entities.items
+        try:
+            from game.entities.collectible import Heart, ManaBottle
+            level.entities.append(Heart(self.game, item_x, item_y))
+            level.entities.append(ManaBottle(self.game, item_x + 50, item_y)) # Lệch x một chút để không chồng nhau
+        except ImportError:
+            pass
+
+    def spawn_exit_platform(self):
+        """Triệu hồi bục nhảy di động sau khi boss bị hạ gục"""
+        # Lấy vị trí trung tâm của Boss để spawn bục
+        p_x = 1100
+        p_y = 350
+        level = self.game.states["playing"].level
+        
+        try:
+            from game.objects.platform import MovingPlatform
+            # Tạo một bục di chuyển dọc (is_horizontal=False) để đưa người chơi lên cao
+            exit_plat = MovingPlatform(
+                self.game, 
+                x=p_x, 
+                y=p_y, 
+                w=120, 
+                h=25, 
+                speed=1.5, 
+                distance=300, 
+                is_horizontal=False
+            )
+            level.platforms.append(exit_plat)
+        except ImportError:
+            pass
 
     def render(self, renderer, camera):
         if not self.alive and not self.is_dead_body:

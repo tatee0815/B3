@@ -16,7 +16,7 @@ class AssetManager:
         "skill":    {"file": "sprites/hero_attack2.png","frames": 8},
         "death":    {"file": "sprites/hero_death.png",  "frames": 6},
         "dash":     {"file": "sprites/hero_dash.png",   "frames": 6},
-        "mele":     {"file": "sprites/mele_attack.png", "frames": 8}, 
+        "mele":     {"file": "sprites/mele.png",        "frames": 8}, 
         # Goblin
         "goblin_idle":   {"file": "enemies/Scorpio_idle.png",   "frames": 4},
         "goblin_walk":   {"file": "enemies/Scorpio_walk.png",   "frames": 4},
@@ -38,7 +38,28 @@ class AssetManager:
         "boss_attack3":     {"file": "boss/attack_3.png",   "frames": 7,    "frame_w": 128, "frame_h": 128},
         "boss_hurt":        {"file": "boss/hurt.png",       "frames": 2,    "frame_w": 128, "frame_h": 128}, 
         "boss_death":       {"file": "boss/death.png",      "frames": 10,   "frame_w": 128, "frame_h": 128},
-        "boss_head":        {"file": "boss/head.png",       "frames": 8,    "frame_w": 72, "frame_h": 72}
+        "boss_head":        {"file": "boss/head.png",       "frames": 8,    "frame_w": 72,  "frame_h": 72},
+        "boss_fireball":    {"file": "boss/fire_ball.png",  "frames": 14,   "frame_w": 64,  "frame_h": 64},
+        # Princess
+        "princess_idle":    {"file": "sprites/princess_idle.png",    "frames": 9, "frame_w": 128, "frame_h": 128},
+        "princess_special": {"file": "sprites/princess_special.png", "frames": 8, "frame_w": 128, "frame_h": 128},
+    }
+
+    BACKGROUND_ASSETS = {
+        # map 1
+        "bg_1": "backgrounds/sky_mountain_1.png",          
+        "mid_1": "backgrounds/shadow_village_1.png", 
+        "end_1": "backgrounds/grass_gate_1.png",
+        # map 2
+        "bg_2": "backgrounds/sky_2.png",          
+        "mid_2": "backgrounds/cloud_ground_2.png", 
+        "end_2": "backgrounds/tree_2.png",
+        # map 3
+        "bg_3":  "backgrounds/sky_3.png",  
+        "mid_3": "backgrounds/mountain_cloud_3.png",
+        "end_3": "backgrounds/rock_3.png",
+        # boss
+        "boss_bg": "backgrounds/boss_bg.png"
     }
 
     @classmethod

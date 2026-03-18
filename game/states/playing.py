@@ -1,5 +1,4 @@
 import sdl2
-import os
 from game.entities.projectile import Projectile
 from game.level.level import Level
 
@@ -16,55 +15,53 @@ class PlayingState:
         menu_continue = kwargs.get("menu_continue", False)
         from_intro = kwargs.get("from_intro", False)
         
-        # Nếu chọn "Bắt đầu mới" hoặc chưa khởi tạo, tiến hành nạp lại từ đầu
-        if from_intro or not self.is_initialized or force_reset:
-            
+        # --- BƯỚC 1: NẠP DỮ LIỆU (Chạy khi mới mở game hoặc Reset) ---
+        # Chúng ta nạp Map và tạo Player trước, nhưng CHƯA đặt vị trí vội
+        if not self.is_initialized or force_reset:
             if force_reset:
                 self.game.reset_progress()
             
             level_name = self.game.player_progress["current_level"]
-            
             if self.level.load_from_json(level_name):
                 from game.entities.player import Player
                 self.player = Player(self.game)
-                
-                # Spawn tại vị trí gốc của level (KHÔNG dùng checkpoint)
-                spawn_pos = self.level.get_spawn_position()
-                self.player.rect.x, self.player.rect.y = spawn_pos
-                self.player.pos_x, self.player.pos_y = float(spawn_pos[0]), float(spawn_pos[1])
-                self.player.vel_x = 0
-                self.player.vel_y = 0
-                
                 self.level.spawn_all_entities(self.game)
                 self.is_initialized = True
 
-                # Đảm bảo checkpoint bị xóa khi đi qua Intro (tránh lặp lỗi cũ)
-                self.game.player_progress["checkpoint"] = None
+        # --- BƯỚC 2: XỬ LÝ VỊ TRÍ NHÂN VẬT (Đây là chỗ quyết định) ---
+        saved_cp = self.game.player_progress.get("checkpoint")
 
-                # Camera reset ngay
-                if hasattr(self.game, 'camera'):
-                    self.game.camera.reset()
-            return   # ← Kết thúc block để tránh chạy code phía dưới
+        if from_intro:
+            # Nếu bắt đầu mới: Xóa checkpoint, về đầu map
+            self.game.player_progress["checkpoint"] = None
+            spawn_pos = self.level.get_spawn_position()
+            self.player.respawn(spawn_pos)
 
-        # === TIẾP TỤC TỪ MENU (có checkpoint) ===
-        if menu_continue and self.player and self.game.player_progress.get("checkpoint") is not None:
-            checkpoint_pos = self.game.player_progress["checkpoint"]
-            self.player.respawn(checkpoint_pos)
-            self.player.checkpoint_pos = checkpoint_pos
-            if hasattr(self.game, 'camera'):
-                self.game.camera.reset()
-            return
+        elif menu_continue:
+            # Nếu Tiếp tục từ Menu: Ưu tiên Checkpoint, nếu không có mới về đầu map
+            if saved_cp:
+                self.player.respawn(saved_cp)
+                self.player.checkpoint_pos = saved_cp
+            else:
+                spawn_pos = self.level.get_spawn_position()
+                self.player.respawn(spawn_pos)
 
-        # === Camera điều chỉnh bình thường (trường hợp khác) ===
-        if self.is_initialized and not force_reset and not menu_continue:
-            if hasattr(self.game, 'camera'):
-                self.game.camera.x = self.player.rect.x - self.game.camera.width // 2
-                self.game.camera.y = self.player.rect.y - self.game.camera.height // 2
-                self.game.camera.update(self.player)
+        elif force_reset:
+            # Nếu chết/reset trong game: Về checkpoint gần nhất
+            target = saved_cp if saved_cp else self.level.get_spawn_position()
+            self.player.respawn(target)
+
+        # --- BƯỚC 3: CẬP NHẬT CAMERA ---
+        if hasattr(self.game, 'camera'):
+            # Nếu vừa Resume từ Pause, cho camera bám theo vị trí hiện tại ngay
+            self.game.camera.update(self.player)
         
     def update(self, delta_time):
         if not self.player or not self.level:
             return
+
+        if self.level:
+            self.level.update(delta_time)
 
         # 1. Update tất cả entities trước (enemy, projectile, moving platform, v.v.)
         self.level.update_entities(delta_time)
@@ -95,16 +92,23 @@ class PlayingState:
 
         # 7. Kiểm tra thắng level
         if self.level.check_win(self.player):
-            current_lv = self.game.player_progress.get("current_level", "level1_forest")
+            current_lv = self.game.player_progress.get("current_level", "level1_village")
             
             # Sync progress trước khi chuyển
             self.game.player_progress["coin"] = self.player.gold
             self.game.player_progress["lives"] = self.game.lives
             self.game.player_progress["checkpoint"] = None  # ← XÓA CHECKPOINT CŨ KHI CHUYỂN LEVEL
 
-            if current_lv == "level1_forest":
-                print(">>> Chuyển sang Level 2: Hang Đá Lửa")
-                self.game.player_progress["current_level"] = "level2_lava"
+            if current_lv == "level1_village":
+                self.game.player_progress["current_level"] = "level2_valley"
+                self.is_initialized = False
+                self.game.change_state("playing", reset=False)
+            elif current_lv == "level2_valley":
+                self.game.player_progress["current_level"] = "level3_mountain"
+                self.is_initialized = False
+                self.game.change_state("playing", reset=False)
+            elif current_lv == "level3_mountain":
+                self.game.player_progress["current_level"] = "boss_arena"
                 self.is_initialized = False
                 self.game.change_state("playing", reset=False)
             else:

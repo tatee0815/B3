@@ -2,13 +2,15 @@
 import sdl2
 import json
 import os
+import ctypes
+import sdl2.sdlttf as ttf
 from game.constants import TILE_SIZE, SCREEN_WIDTH, SCREEN_HEIGHT, GRAVITY
 from game.entities.enemy import Goblin, Skeleton, FireBat
 from game.entities.collectible import Coin, Collectible, ManaBottle, Heart, Princess
 from game.entities.boss_shadow_king import BossShadowKing
 from game.objects.breakable import BreakableBox
-from game.objects.checkpoint import Checkpoint
 from game.objects.platform import Platform, MovingPlatform
+from game.utils.assets import AssetManager
 
 class Level:
     def __init__(self, game):
@@ -29,6 +31,11 @@ class Level:
         self.bg_color = (0, 0, 0, 255)
         self.start_position = (100, 100)
         self.gravity = GRAVITY
+        self.bg_layers = []
+
+        self.title_timer = 0.0
+        self.title_duration = 10.0  # 10 giây
+        self.display_name = ""      # Tên sẽ hiển thị
 
     def load_from_json(self, filename):
         """Đọc file JSON từ game/level/levels/"""
@@ -43,7 +50,9 @@ class Level:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                
+                self.name = data.get("name", "Unknown Area")
+                self.display_name = self.name # Lưu tên để hiển thị
+                self.title_timer = self.title_duration
                 # Nạp tile_size từ file JSON, nếu không có thì dùng hằng số TILE_SIZE
                 self.tile_size = data.get("tile_size", TILE_SIZE)
                 
@@ -51,7 +60,19 @@ class Level:
                 self.height = data["height"]
                 self.tiles = data["tiles"]
                 self.bg_color = data.get("bg_color", [0, 0, 0, 255])
-
+                # --- NẠP CẤU HÌNH BACKGROUND LAYER ---
+                self.bg_layers = []
+                bg_config = data.get("backgrounds", [])
+                
+                for bg in bg_config:
+                    layer = BackgroundLayer(
+                        self.renderer,
+                        bg["texture_key"], # Ví dụ: "sky", "mountain"
+                        bg["speed"],       # Ví dụ: 0.1, 0.5
+                        bg.get("y_offset", 0), # Mặc định Y = 0
+                        bg.get("alpha", 255)
+                    )
+                    self.bg_layers.append(layer)
                 self.entities_data = data.get("entities", [])
 
                 # Sử dụng self.tile_size để tính toán
@@ -64,6 +85,10 @@ class Level:
         except Exception as e:
             print(f"[Level] Lỗi JSON: {e}")
             return False
+
+    def update(self, delta_time):
+        if self.title_timer > 0:
+            self.title_timer -= delta_time
 
     def handle_collision(self, player):
         """Xử lý va chạm với kiểm tra biên an toàn (Tránh IndexError)"""
@@ -159,9 +184,10 @@ class Level:
         camera_x = int(camera.x)
         camera_y = int(camera.y)
 
-        # 1. Vẽ màu nền
-        sdl2.SDL_SetRenderDrawColor(renderer, *self.bg_color)
-        # (Giả sử bạn có logic clear screen ở đây hoặc trong game.py)
+        # 1. VẼ CÁC LỚP BACKGROUND LAYER
+        for layer in self.bg_layers:
+            # Truyền SCREEN_WIDTH, SCREEN_HEIGHT vào (lấy từ constants)
+            layer.render(renderer, camera_x, SCREEN_WIDTH, SCREEN_HEIGHT)
 
         # 2. Tính toán phạm vi tile cần vẽ (Culling)
         # Đảm bảo start không nhỏ hơn 0 và end không lớn hơn kích thước map
@@ -210,6 +236,37 @@ class Level:
 
         self.render_entities(renderer, camera)
 
+        # 3. Vẽ Tiêu đề Map (Thêm vào cuối hàm render)
+        if self.title_timer > 0 and self.display_name:
+            font = self.game.font
+            if font:
+                # Tính toán độ mờ (Alpha) mờ dần khi gần hết thời gian
+                alpha = 255
+                if self.title_timer < 2.0: # 2 giây cuối sẽ mờ dần
+                    alpha = int((self.title_timer / 2.0) * 255)
+                
+                sdl_color = sdl2.SDL_Color(255, 215, 0, alpha)
+                
+                # Render chữ
+                text_surface = ttf.TTF_RenderUTF8_Blended(font, self.display_name.encode('utf-8'), sdl_color)
+                if text_surface:
+                    text_texture = sdl2.SDL_CreateTextureFromSurface(renderer, text_surface)
+                    tw, th = text_surface.contents.w, text_surface.contents.h
+                    
+                    # Vị trí: Chính giữa màn hình, cách mép trên 100px
+                    dst_rect = sdl2.SDL_Rect(
+                        (SCREEN_WIDTH // 2) - (tw // 2),
+                        100,
+                        tw,
+                        th
+                    )
+                    
+                    sdl2.SDL_SetTextureAlphaMod(text_texture, alpha)
+                    sdl2.SDL_RenderCopy(renderer, text_texture, None, dst_rect)
+                    
+                    sdl2.SDL_DestroyTexture(text_texture)
+                    sdl2.SDL_FreeSurface(text_surface)
+
     def get_spawn_position(self):
         return self.start_position
 
@@ -253,7 +310,19 @@ class Level:
                 if etype == "platform":
                     self.platforms.append(Platform(game, x, y, p_w, p_h))
                 elif etype == "moving_platform":
-                    self.platforms.append(MovingPlatform(game, x, y, p_w, p_h, speed=e.get("speed", 2.0)))
+                    p_w = e.get("w", self.tile_size)
+                    p_h = e.get("h", self.tile_size)
+                    p_speed = e.get("speed", 2.0)
+                    # Đọc khoảng cách (distance) và hướng (horizontal)
+                    p_dist = e.get("distance", 200)
+                    p_horiz = e.get("horizontal", True) # Mặc định là di chuyển ngang
+                    
+                    self.platforms.append(MovingPlatform(
+                        game, x, y, p_w, p_h, 
+                        speed=p_speed, 
+                        distance=p_dist, 
+                        is_horizontal=p_horiz
+                    ))
                 
             # --- NHÓM ITEM THU THẬP ---
             elif etype == "coin":
@@ -267,18 +336,32 @@ class Level:
 
             # --- NHÓM VẬT THỂ PHÁ HỦY ---
             elif etype == "breakable":
-                self.entities.append(BreakableBox(game, x, y, explosive=e.get("explosive", False)))
+                box_id = f"box_{int(x)}_{int(y)}"
+                broken_list = game.player_progress.get("broken_boxes", [])
+                if box_id not in broken_list:
+                    self.entities.append(BreakableBox(game, x, y, explosive=e.get("explosive", False)))
 
             # --- NHÓM CỔNG & CHECKPOINT ---
             elif etype == "eportal":
                 from game.objects.portal import EndPortal
                 self.entities.append(EndPortal(game, x, y))
-                
+
             elif etype == "chest":
                 from game.objects.chest import Chest
-                # Đọc xem rương này mở khóa skill gì từ JSON (nếu có)
                 unlock = e.get("unlock", None)
-                self.entities.append(Chest(game, x, y, unlock_skill=unlock))
+                
+                # 1. Tạo instance rương
+                new_chest = Chest(game, x, y, unlock_skill=unlock)
+                
+                # 2. Tạo ID duy nhất cho rương dựa trên tọa độ
+                chest_id = f"{x}_{y}"
+                
+                # 3. Kiểm tra xem ID này có trong danh sách đã mở chưa
+                opened_list = game.player_progress.get("opened_chests", [])
+                if chest_id in opened_list:
+                    new_chest.opened = True # Đánh dấu đã mở ngay từ đầu
+                
+                self.entities.append(new_chest)
                 
             elif etype == "BossShadowKing":
                 boss = BossShadowKing(self.game, e['x'], e['y'])  # vị trí tùy level
@@ -304,7 +387,7 @@ class Level:
         elif etype in ("fire_bat", "firebat"):
             enemy = FireBat(self.game, x, y)
             enemy.type = "fire_bat"
-        elif etype in ("boss", "shadow_king", "boss_shadow_king"):
+        elif etype in ("BossShadowKing"):
             enemy = BossShadowKing(self.game, x, y)
             enemy.type = "boss"
         else:
@@ -341,11 +424,6 @@ class Level:
                 not getattr(entity, 'is_dead_body', False)) or \
                 (hasattr(entity, 'life_time') and entity.life_time <= 0):
                 self.entities.remove(entity)
-                continue
-
-            # --- A. CHECKPOINT ---
-            if isinstance(entity, Checkpoint):
-                entity.update(player)
                 continue
 
             # --- B. UPDATE CHUNG (Trọng lực, vị trí...) ---
@@ -444,3 +522,45 @@ class Level:
             
             if hasattr(entity, 'render'):
                 entity.render(renderer, camera)
+
+class BackgroundLayer:
+    def __init__(self, renderer, texture_key, scroll_speed, y_offset=0, alpha=255):
+        path = AssetManager.BACKGROUND_ASSETS.get(texture_key)
+        if path:
+            self.texture = AssetManager.load_texture(path, renderer)
+        else:
+            print(f"[BG] Warning: Không tìm thấy key {texture_key}!")
+            self.texture = None
+            
+        self.scroll_speed = scroll_speed 
+        self.y_offset = y_offset
+
+        self.alpha = alpha
+        
+        if self.texture:
+            # Lấy kích thước ảnh gốc
+            w = ctypes.c_int(0)
+            h = ctypes.c_int(0)
+            sdl2.SDL_QueryTexture(self.texture, None, None, ctypes.byref(w), ctypes.byref(h))
+            self.w = w.value
+            self.h = h.value
+        else:
+            self.w = self.h = 0
+
+    def render(self, renderer, camera_x, screen_w, screen_h):
+        if not self.texture or self.w <= 0: 
+            return
+        
+        sdl2.SDL_SetTextureAlphaMod(self.texture, self.alpha)
+
+        start_x = int(-camera_x * self.scroll_speed) % self.w
+        
+        num_tiles = (screen_w // self.w) + 2
+        for i in range(-1, num_tiles):
+            dstrect = sdl2.SDL_Rect(
+                start_x + i * self.w,
+                self.y_offset,
+                self.w,
+                screen_h 
+            )
+            sdl2.SDL_RenderCopy(renderer, self.texture, None, dstrect)
