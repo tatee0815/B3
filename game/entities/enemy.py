@@ -342,7 +342,7 @@ class Skeleton(Enemy):
 
         # --- PHẦN THÊM SPRITE ---
         self.state = "skeleton_walk"
-        self.anim_frame = 0
+        self.anim_frame = 0.5
         self.anim_timer = 0
 
         self.death_alpha = 255
@@ -451,7 +451,7 @@ class Skeleton(Enemy):
         super().render(renderer, camera)
 
     def _render_sword_debug(self, renderer, camera):
-        debug_color = (255, 255, 0, 255) if self.prep_timer > 0 else (255, 0, 0, 255)
+        debug_color = (255, 0, 0, 255)
         sdl2.SDL_SetRenderDrawColor(renderer, *debug_color)
         
         sword_x = self.rect.x + self.rect.w if self.direction > 0 else self.rect.x - self.attack_range

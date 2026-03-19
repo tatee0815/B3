@@ -58,7 +58,7 @@ class MenuState:
         
         # 2. Render Tiêu đề (Chống tràn)
         if hasattr(self.game, 'title_font') and self.game.title_font:
-            t_surf = ttf.TTF_RenderUTF8_Blended(self.game.title_font, "HIỆP SĨ KIẾM HUYỀN THOẠI".encode('utf-8'), sdl2.SDL_Color(255, 215, 0))
+            t_surf = ttf.TTF_RenderUTF8_Blended(self.game.title_font, "HIỆP SĨ SKIBIDI HUYỀN THOẠI".encode('utf-8'), sdl2.SDL_Color(255, 215, 0))
             if t_surf:
                 self.title_tex = sdl2.SDL_CreateTextureFromSurface(renderer, t_surf)
                 tw, th = t_surf.contents.w, t_surf.contents.h

@@ -82,7 +82,6 @@ class Level:
                 
                 if "start_position" in data:
                     self.start_position = (data["start_position"]["x"], data["start_position"]["y"])
-                    print(f"[Level] Start position: {self.start_position}")
                 return True
         except Exception as e:
             print(f"[Level] Lỗi JSON: {e}")
@@ -370,7 +369,7 @@ class Level:
                 self.entities.append(boss)
                 self.enemies.append(boss)
         
-        self.spawn_random_collectibles(count=10, types=[Coin, Heart])
+        self.spawn_random_collectibles(count=10, types=[Coin, ManaBottle])
     
     def spawn_enemy(self, enemy_type: str, x: int, y: int):
         """

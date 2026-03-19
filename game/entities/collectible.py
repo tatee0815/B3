@@ -5,7 +5,7 @@ Các đối tượng thu thập (collectible) - item nhặt được từ thùng
 import math
 import random
 import sdl2
-from game.constants import COLORS
+from game.constants import COLORS, PLAYER_MAX_HP
 from game.utils.assets import AssetManager
 from .base import Entity
 
@@ -102,7 +102,7 @@ class Heart(Collectible):
         if self.collected: return  # tránh collect nhiều lần
         self.collected = True
         self._mark_as_collected()
-        player.hp += 1
+        player.hp = min(player.hp + 1, PLAYER_MAX_HP)
         if hasattr(player, 'show_speech'):
             player.show_speech(random.choice(PLAYER_COLLECT_QUOTES["heart"]))
         self.kill()  # loại bỏ khỏi game sau khi nhặt
