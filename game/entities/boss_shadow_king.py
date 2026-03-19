@@ -84,7 +84,7 @@ class BossShadowKing(Enemy):
         self.z_index = 5
         self.color = (40, 0, 60, 255)
 
-        self.max_hp = 100
+        self.max_hp = 300
         self.hp = self.max_hp
         self.spawned_milestones = {
             "75": False,
