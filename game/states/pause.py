@@ -2,6 +2,7 @@
 import sdl2
 import sdl2.sdlttf as ttf
 from game.constants import SCREEN_WIDTH, SCREEN_HEIGHT, KEY_BINDINGS_DEFAULT
+from game.utils.assets import AudioManager
 
 class PauseState:
     def __init__(self, game):
@@ -45,6 +46,7 @@ class PauseState:
 
         # 2. Xử lý ESC
         if scancode == sdl2.SDL_SCANCODE_ESCAPE:
+            AudioManager.play_sfx("choice")
             if self.mode == "main": self.game.change_state("playing")
             elif self.mode == "settings_main": 
                 self.mode = "main"
@@ -56,17 +58,26 @@ class PauseState:
 
         # 3. Điều hướng Lên/Xuống/Trái/Phải
         if self.mode == "settings_keys":
-            if scancode == sdl2.SDL_SCANCODE_UP: self.selected = (self.selected - 1) % 9
-            elif scancode == sdl2.SDL_SCANCODE_DOWN: self.selected = (self.selected + 1) % 9
+            if scancode == sdl2.SDL_SCANCODE_UP: 
+                self.selected = (self.selected - 1) % 9
+                AudioManager.play_sfx("choice")
+            elif scancode == sdl2.SDL_SCANCODE_DOWN: 
+                self.selected = (self.selected + 1) % 9
+                AudioManager.play_sfx("choice")
         else:
             limit = len(self.main_options) if self.mode == "main" else len(self.setting_options)
-            if scancode == sdl2.SDL_SCANCODE_UP: self.selected = (self.selected - 1) % limit
-            elif scancode == sdl2.SDL_SCANCODE_DOWN: self.selected = (self.selected + 1) % limit
+            if scancode == sdl2.SDL_SCANCODE_UP: 
+                self.selected = (self.selected - 1) % limit
+                AudioManager.play_sfx("choice")
+            elif scancode == sdl2.SDL_SCANCODE_DOWN: 
+                self.selected = (self.selected + 1) % limit
+                AudioManager.play_sfx("choice")
             elif scancode == sdl2.SDL_SCANCODE_LEFT and self.mode == "settings_main": self._adjust_value(-1, st)
             elif scancode == sdl2.SDL_SCANCODE_RIGHT and self.mode == "settings_main": self._adjust_value(1, st)
 
         # 4. Action / Enter
         if scancode in (sdl2.SDL_SCANCODE_RETURN, sdl2.SDL_SCANCODE_Z, sdl2.SDL_SCANCODE_SPACE):
+            AudioManager.play_sfx("select")
             if self.mode == "main":
                 if self.selected == 0: self.game.change_state("playing")
                 elif self.selected == 1:
@@ -102,10 +113,13 @@ class PauseState:
             st._save_settings()
         elif self.selected == 1: # Nhạc
             st.music_volume = max(0, min(100, st.music_volume + delta * 5))
+            AudioManager.set_volumes(st.music_volume, st.sfx_volume)
             st._save_settings()
         elif self.selected == 2: # SFX
             st.sfx_volume = max(0, min(100, st.sfx_volume + delta * 5))
+            AudioManager.set_volumes(st.music_volume, st.sfx_volume)
             st._save_settings()
+            AudioManager.play_sfx("choice")
 
     def render(self, renderer):
         sdl2.SDL_SetRenderDrawBlendMode(renderer, sdl2.SDL_BLENDMODE_BLEND)

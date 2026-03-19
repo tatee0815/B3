@@ -1,5 +1,5 @@
 """
-game.py - Class Game chính (đã fix scale + resize mượt)
+game.py - Class Game chính 
 """
 
 import sdl2
@@ -11,6 +11,7 @@ from game.constants import (
     KEY_BINDINGS_DEFAULT, COLORS, PLAYER_MAX_HP, MAX_LIVES,
     MANA_MAX
 )
+from game.utils.assets import AudioManager
 from game.utils.camera import Camera
 from game.utils.save import save_game, load_game
 from game.states.menu import MenuState
@@ -59,7 +60,7 @@ class Game:
 
         # Progress người chơi
         self.player_progress = {
-            "current_level": "level1_village",
+            "current_level": "boss_arena",
             "unlocked_skills": ["melee"],
             "double_jump": False,
             "skill_a_upgraded": False,
@@ -91,6 +92,12 @@ class Game:
         self.game_time = 0.0
         self.slowmo_timer = 0.0
         self.slowmo_factor = 1.0
+
+        # Âm thanh
+        AudioManager.init()
+        st = self.states["setting"]
+        AudioManager.set_volumes(st.music_volume, st.sfx_volume)
+        AudioManager.play_bgm()
 
     def setup(self):
         from game.entities.player import Player
@@ -204,7 +211,7 @@ class Game:
                 
     def reset_progress(self):
         self.player_progress = {
-            "current_level": "level1_village",
+            "current_level": "boss_arena",
             "unlocked_skills": ["melee"],
             "double_jump": False,
             "skill_a_upgraded": False,

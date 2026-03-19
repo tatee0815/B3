@@ -1,5 +1,6 @@
 import sdl2
 import sdl2.ext
+import sdl2.sdlmixer as mixer
 import os
 from game.constants import ASSETS_ROOT
 
@@ -32,17 +33,25 @@ class AssetManager:
         "firebat_attack":   {"file": "enemies/Vulture_attack.png",  "frames": 2},
         "firebat_death":    {"file": "enemies/Vulture_death.png",   "frames": 4},
         # Boss 
-        "boss_idle":        {"file": "boss/idle.png",       "frames": 6,    "frame_w": 128, "frame_h": 128},
-        "boss_attack1":     {"file": "boss/attack_1.png",   "frames": 10,   "frame_w": 128, "frame_h": 128},
-        "boss_attack2":     {"file": "boss/attack_2.png",   "frames": 10,   "frame_w": 128, "frame_h": 128},
-        "boss_attack3":     {"file": "boss/attack_3.png",   "frames": 7,    "frame_w": 128, "frame_h": 128},
-        "boss_hurt":        {"file": "boss/hurt.png",       "frames": 2,    "frame_w": 128, "frame_h": 128}, 
+        "boss_idle":        {"file": "boss/idle_1.png",     "frames": 5,    "frame_w": 128, "frame_h": 128},
+        "boss_attack1":     {"file": "boss/attack_1_1.png", "frames": 6,    "frame_w": 128, "frame_h": 128},
+        "boss_attack2":     {"file": "boss/attack_2_1.png", "frames": 3,    "frame_w": 128, "frame_h": 128},
+        "boss_attack3":     {"file": "boss/attack_3_1.png", "frames": 6,    "frame_w": 128, "frame_h": 128},
+        "boss_fireball":    {"file": "boss/fire_ball_1.png","frames": 4,    "frame_w": 48,  "frame_h": 48},
+        "boss_transform":   {"file": "boss/death_1.png",    "frames": 8,    "frame_w": 128, "frame_h": 128},
+        #Boss p2
+        "boss_idle_p2":     {"file": "boss/idle.png",       "frames": 6,    "frame_w": 128, "frame_h": 128},
+        "boss_attack1_p2":  {"file": "boss/attack_1.png",   "frames": 10,   "frame_w": 128, "frame_h": 128},
+        "boss_attack2_p2":  {"file": "boss/attack_2.png",   "frames": 10,   "frame_w": 128, "frame_h": 128},
+        "boss_attack3_p2":  {"file": "boss/attack_3.png",   "frames": 7,    "frame_w": 128, "frame_h": 128},
+        "boss_fireball_p2": {"file": "boss/fire_ball.png",  "frames": 14,   "frame_w": 64,  "frame_h": 64},
         "boss_death":       {"file": "boss/death.png",      "frames": 10,   "frame_w": 128, "frame_h": 128},
         "boss_head":        {"file": "boss/head.png",       "frames": 8,    "frame_w": 72,  "frame_h": 72},
-        "boss_fireball":    {"file": "boss/fire_ball.png",  "frames": 14,   "frame_w": 64,  "frame_h": 64},
         # Princess
-        "princess_idle":    {"file": "sprites/princess_idle.png",    "frames": 9, "frame_w": 128, "frame_h": 128},
-        "princess_special": {"file": "sprites/princess_special.png", "frames": 8, "frame_w": 128, "frame_h": 128},
+        "princess_idle":        {"file": "sprites/princess_idle.png",       "frames": 9, "frame_w": 128, "frame_h": 128},
+        "princess_special":     {"file": "sprites/princess_special.png",    "frames": 8, "frame_w": 128, "frame_h": 128},
+        "princess_protection":  {"file": "sprites/princess_protection.png", "frames": 4, "frame_w": 128, "frame_h": 128},
+        "princess_walk":        {"file": "sprites/princess_walk.png",       "frames": 12, "frame_w": 128, "frame_h": 128},
     }
 
     BACKGROUND_ASSETS = {
@@ -103,3 +112,61 @@ class AssetManager:
         srcrect = sdl2.SDL_Rect(actual_frame * frame_w, 0, frame_w, frame_h)
         
         return texture, srcrect
+    
+class AudioManager:
+    _bgm = None
+    _sfx = {}
+    _music_volume = 70
+    _sfx_volume = 85
+
+    @classmethod
+    def init(cls):
+        # Khởi tạo SDL_mixer
+        if mixer.Mix_OpenAudio(44100, mixer.MIX_DEFAULT_FORMAT, 2, 2048) < 0:
+            print(f"Mixer Error: {mixer.Mix_GetError()}")
+            return
+        
+        # Nạp nhạc nền
+        bgm_path = os.path.join(ASSETS_ROOT, "audio/bga.mp3")
+        cls._bgm = mixer.Mix_LoadMUS(bgm_path.encode())
+        
+        # Nạp SFX
+        cls._load_sfx("choice", "audio/choice.mp3")
+        cls._load_sfx("select", "audio/select.mp3")
+        cls._load_sfx("win", "audio/win.mp3")
+        cls._load_sfx("game_over", "audio/game_over.mp3")
+
+    @classmethod
+    def _load_sfx(cls, name, path):
+        full_path = os.path.join(ASSETS_ROOT, path)
+        chunk = mixer.Mix_LoadWAV(full_path.encode())
+        if chunk: cls._sfx[name] = chunk
+
+    @classmethod
+    def play_bgm(cls):
+        if cls._bgm:
+            mixer.Mix_PlayMusic(cls._bgm, -1)
+            cls.apply_volumes()
+
+    @classmethod
+    def stop_bgm(cls):
+        mixer.Mix_HaltMusic()
+
+    @classmethod
+    def play_sfx(cls, name):
+        if name in cls._sfx:
+            mixer.Mix_HaltChannel(-1)
+            mixer.Mix_PlayChannel(-1, cls._sfx[name], 0)
+
+    @classmethod
+    def set_volumes(cls, music_vol, sfx_vol):
+        cls._music_volume = music_vol
+        cls._sfx_volume = sfx_vol
+        cls.apply_volumes()
+
+    @classmethod
+    def apply_volumes(cls):
+        # Chuyển đổi từ thang 0-100 sang 0-128 của SDL_mixer
+        mixer.Mix_VolumeMusic(int(cls._music_volume * 1.28))
+        for chunk in cls._sfx.values():
+            mixer.Mix_VolumeChunk(chunk, int(cls._sfx_volume * 1.28))

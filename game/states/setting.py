@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import sdl2
 import sdl2.sdlttf as ttf
+from game.utils.assets import AudioManager
 import json
 import os
 from game.constants import SCREEN_WIDTH, SCREEN_HEIGHT, KEY_BINDINGS_DEFAULT
@@ -98,8 +99,10 @@ class SettingState:
         else: # self.mode == "main"
             if scancode == sdl2.SDL_SCANCODE_UP:
                 self.selected = (self.selected - 1) % len(self.options)
+                AudioManager.play_sfx("choice")
             elif scancode == sdl2.SDL_SCANCODE_DOWN:
                 self.selected = (self.selected + 1) % len(self.options)
+                AudioManager.play_sfx("choice")
             elif scancode == sdl2.SDL_SCANCODE_LEFT:
                 self._adjust_value(-1) # Giảm âm lượng hoặc lùi độ phân giải
             elif scancode == sdl2.SDL_SCANCODE_RIGHT:
@@ -107,6 +110,7 @@ class SettingState:
 
         # 4. XỬ LÝ CHỌN (Xác nhận dùng Enter, Z hoặc Space)
         if scancode in (sdl2.SDL_SCANCODE_RETURN, sdl2.SDL_SCANCODE_Z, sdl2.SDL_SCANCODE_SPACE):
+            AudioManager.play_sfx("select")
             if self.mode == "main":
                 if self.selected == 3: # Chọn mục "Tùy chỉnh phím"
                     self.mode = "sub_menu"
@@ -122,6 +126,7 @@ class SettingState:
 
         # 5. XỬ LÝ QUAY LẠI (Phím ESC)
         elif scancode == sdl2.SDL_SCANCODE_ESCAPE:
+            AudioManager.play_sfx("choice")
             if self.mode == "sub_menu":
                 self.mode = "main"
                 self.selected = 3  # Quay về đúng mục "Tùy chỉnh phím" ở menu chính
@@ -157,9 +162,12 @@ class SettingState:
         elif self.selected == 1: 
             amt = delta * 5 # Tăng/giảm 5%
             self.music_volume = max(0, min(100, self.music_volume + amt))
+            AudioManager.set_volumes(self.music_volume, self.sfx_volume)
         elif self.selected == 2: 
             amt = delta * 5
             self.sfx_volume = max(0, min(100, self.sfx_volume + amt))
+            AudioManager.set_volumes(self.music_volume, self.sfx_volume)
+            AudioManager.play_sfx("choice")
 
     def update(self, delta_time): pass
 

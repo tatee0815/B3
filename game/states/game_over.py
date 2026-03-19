@@ -1,5 +1,7 @@
 import sdl2
 import sdl2.sdlttf as ttf
+import sdl2.sdlmixer as mixer
+from game.utils.assets import AudioManager
 
 class GameOverState:
     def __init__(self, game):
@@ -7,13 +9,15 @@ class GameOverState:
         self.name = "game_over"
 
     def on_enter(self, **kwargs):
-        pass
+        AudioManager.stop_bgm()
+        AudioManager.play_sfx("game_over")
 
     def on_exit(self):
-        pass
+        mixer.Mix_HaltChannel(-1)
 
     def handle_event(self, event):
         if event.type == sdl2.SDL_KEYDOWN:
+            AudioManager.play_bgm()
             if event.key.keysym.sym in (sdl2.SDLK_RETURN, sdl2.SDLK_z, sdl2.SDLK_SPACE):
                 # Khi chết hẳn, bấm phím sẽ tự động reset toàn bộ tiến trình và chơi lại
                 self.game.change_state("playing", reset=True)

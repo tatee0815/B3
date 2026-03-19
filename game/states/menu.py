@@ -4,6 +4,7 @@ from sdl2 import sdlimage as sdlimage
 import sdl2.sdlttf as ttf
 import random
 from game.constants import SCREEN_WIDTH, SCREEN_HEIGHT
+from game.utils.assets import AudioManager
 
 class Particle:
     def __init__(self, x, y):
@@ -110,12 +111,15 @@ class MenuState:
             # Chỉ nhận phím mũi tên Lên/Xuống
             if scancode == sdl2.SDL_SCANCODE_UP:
                 self.selected = (self.selected - 1) % len(self.options)
+                AudioManager.play_sfx("choice")
             elif scancode == sdl2.SDL_SCANCODE_DOWN:
                 self.selected = (self.selected + 1) % len(self.options)
+                AudioManager.play_sfx("choice")
             
             # Phím xác nhận (Z, Enter hoặc Space)
             elif scancode in (sdl2.SDL_SCANCODE_RETURN, sdl2.SDL_SCANCODE_Z, sdl2.SDL_SCANCODE_SPACE):
                 self._handle_selection()
+                AudioManager.play_sfx("select")
             
             # Phím thoát nhanh
             elif scancode == sdl2.SDL_SCANCODE_ESCAPE:

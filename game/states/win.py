@@ -1,5 +1,7 @@
 import sdl2
 import sdl2.sdlttf as ttf
+import sdl2.sdlmixer as mixer
+from game.utils.assets import AudioManager
 
 class WinState:
     def __init__(self, game):
@@ -9,9 +11,12 @@ class WinState:
 
     def on_enter(self, **kwargs):
         self.timer = 0.0
+        AudioManager.stop_bgm()
+        AudioManager.play_sfx("win")
 
     def on_exit(self):
         self.game.reset_progress()
+        mixer.Mix_HaltChannel(-1)
 
     def update(self, delta_time):
         pass

@@ -178,6 +178,10 @@ class Princess(Entity):
             # Đổi qua lại giữa 2 state
             if self.anim_state == "princess_idle":
                 self.anim_state = "princess_special"
+            elif self.anim_state == "princess_special":
+                self.anim_state = "princess_protection"
+            elif self.anim_state == "princess_protection":
+                self.anim_state = "princess_walk"
             else:
                 self.anim_state = "princess_idle"
             

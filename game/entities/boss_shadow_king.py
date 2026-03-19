@@ -10,16 +10,16 @@ BOSS_QUOTES = {
     "hit_head": [
         "KHÔNG! Điểm (G) yếu của ta!", "Ngươi gan lắm!", "YAMETE ??!!!"
     ],
-    "hit_body": ["Ta có khiên!!", "Ngươi quá yếu!", "U i i a a", "Ngươi nên nhắm vào đầu"],
-    "slash_warn": ["TA SẼ XÉ XÁC NGƯƠI!"], 
-    "fire_warn": ["HỎA CẦU BÓNG TỐI!"],     
-    "lightning_warn": ["THIÊN LÔI PHẠT!"],
-    "idle": ["Ngươi chỉ có thế thôi sao?"],
+    "hit_body": ["Ta có khiên!!", "Ngươi quá yếu!", "U i i a a", "Ngươi nên nhắm vào đầu"],
+    "slash_warn": ["TA SẼ XÉ XÁC NGƯƠI!"], 
+    "fire_warn": ["HỎA CẦU BÓNG TỐI!"],     
+    "lightning_warn": ["THIÊN LÔI PHẠT!"],
+    "idle": ["Ngươi chỉ có thế thôi sao?"],
     "death": [
         "Bóng tối... không bao giờ tắt...", 
-        "Nhà vua sẽ trở lại!", 
-        "Ngươi... chỉ là kẻ may mắn..."
-    ]
+        "Ta nhất định sẽ trở lại!", 
+    ],
+    "transform": ["THẾ GIỚI NÀY... SẼ THUỘC VỀ TA!"]
 }
 
 class BossFireball(EnemyFireball):
@@ -84,7 +84,7 @@ class BossShadowKing(Enemy):
         self.z_index = 5
         self.color = (40, 0, 60, 255)
 
-        self.max_hp = 50
+        self.max_hp = 100
         self.hp = self.max_hp
         self.spawned_milestones = {
             "75": False,
@@ -128,6 +128,11 @@ class BossShadowKing(Enemy):
         self.death_vel_y = 0.0
         self.particles = []
 
+        # === TRẠNG THÁI BIẾN HÌNH ===
+        self.is_transforming = False
+        self.has_transformed = False
+        self.transform_timer = 0.0
+
         # === ANIMATION SPRITE ===
         self.sprite_frame_w = 128
         self.sprite_frame_h = 128
@@ -141,12 +146,19 @@ class BossShadowKing(Enemy):
         self.head_anim_speed = 0.12
 
         self.anim_speeds = {
-            "boss_idle":     0.8,   # chậm hơn một chút khi đứng yên
-            "boss_attack1":  0.2,   # slash nhanh hơn
-            "boss_attack2":  0.21,   # lightning rất nhanh
-            "boss_attack3":  0.12,
-            "boss_hurt":     0.2,   # hurt chậm để nhấn mạnh đau
-            "boss_death":    0.45    # death chậm để fade đẹp
+            "boss_idle":     0.8,  
+            "boss_attack1":  0.33,  
+            "boss_attack2":  0.7,  
+            "boss_attack3":  0.14,
+
+            "boss_transform": 3/7,
+
+            "boss_idle_p2":     0.8,
+            "boss_attack1_p2":  0.2,
+            "boss_attack2_p2":  0.21,
+            "boss_attack3_p2":  0.12,
+
+            "boss_death":    0.45,   
         }           
         
         self.direction = 1                 
@@ -159,7 +171,7 @@ class BossShadowKing(Enemy):
             self.death_timer -= delta_time
             self._update_anim_frame(delta_time)
             
-            # Vẫn fade, rơi, particle khi là xác chết (giữ nguyên code cũ)
+            # Vẫn fade, rơi, particle khi là xác chết
             self.death_alpha = int(255 * (self.death_timer / 4.0))
             self.fixed_x += self.death_vel_x * delta_time * 60
             
@@ -179,14 +191,55 @@ class BossShadowKing(Enemy):
                     level.entities.remove(self)
             return
 
-        # Logic bình thường khi còn sống
-        self._update_anim_frame(delta_time)
         self.timer += delta_time
-        
         player = self.game.states["playing"].player if "playing" in self.game.states else None
+        
+        # --- LOGIC BIẾN HÌNH ---
+        # 1. Bắt đầu biến hình
+        if self.hp <= (self.max_hp * 0.5) and not self.has_transformed and not self.is_transforming:
+            self.is_transforming = True
+            self.transform_timer = 3.0 # Đứng gồng 3 giây
+            
+            # Hủy bỏ các đòn đánh đang dở dang
+            self.action_delay = 0 
+            self.pending_action = None
+            self.slash_warning_visual = 0
+            self.is_lightning_active = False
+            
+            self.show_speech("transform", duration=3.0)
+            
+        # 2. Đang trong quá trình biến hình
+        if self.is_transforming:
+            self.transform_timer -= delta_time
+
+            self.anim_state = "boss_transform"
+            self._update_anim_frame(delta_time)
+            
+            if self.speech_timer > 0:
+                self.speech_timer -= delta_time
+
+            # Kết thúc biến hình
+            if self.transform_timer <= 0:
+                self.is_transforming = False
+                self.has_transformed = True
+                
+                # Gọi rơi máu/mana ở mốc 50%
+                self.spawn_mid_battle_items()
+                self.spawned_milestones["50"] = True
+                self.start_idle() # Khởi động lại AI
+                
+            # Đang biến hình thì DỪNG CẬP NHẬT AI và HÀNH ĐỘNG KHÁC
+            return 
+            
+        # --- KẾT THÚC LOGIC BIẾN HÌNH ---
+        
+        # Cập nhật sprite bình thường
+        self._update_anim_frame(delta_time)
         if player:
-            # Cập nhật hướng quay mặt
             self.direction = 1 if player.rect.x > self.fixed_x else -1
+        
+        # --- Tùy chỉnh suffix (Phase 1 / Phase 2) ---
+        suffix = "_p2" if self.has_transformed else ""
 
         # --- Chọn animation state (ưu tiên theo thứ tự) ---
         if self.is_dead_body:
@@ -194,33 +247,31 @@ class BossShadowKing(Enemy):
         elif self.action_delay > 0 or self.slash_warning_visual > 0 or self.is_lightning_active:
             # GỒNG CHIÊU → chuyển sprite attack NGAY
             if self.pending_action == "slash" or self.slash_warning_visual > 0:
-                self.anim_state = "boss_attack1"
+                self.anim_state = f"boss_attack1{suffix}"
             elif self.pending_action == "lightning" or self.is_lightning_active:
-                self.anim_state = "boss_attack2"
+                self.anim_state = f"boss_attack2{suffix}"
             elif self.pending_action == "fire":
-                self.anim_state = "boss_attack3"
-        elif self.hp < 90 and random.random() < 0.03:
-            self.anim_state = "boss_hurt"
+                self.anim_state = f"boss_attack3{suffix}"
         else:
-            self.anim_state = "boss_idle"
+            self.anim_state = f"boss_idle{suffix}"
 
         # Giảm timer animation attack
         if self.attack_anim_timer > 0:
             self.attack_anim_timer -= delta_time
             if self.attack_anim_timer <= 0 and self.anim_state.startswith("boss_attack"):
-                self.anim_state = "boss_idle"
+                self.anim_state = f"boss_idle{suffix}"
 
-        if self.anim_state == "boss_idle":
+        if self.anim_state in ["boss_idle", "boss_idle_p2"]:
             self.head_anim_timer += delta_time
             if self.head_anim_timer >= self.head_anim_speed:
                 self.head_anim_timer -= self.head_anim_speed
                 self.head_anim_frame += 1
-                head_config = AssetManager.ANIM_CONFIG.get("boss_head_idle", {})
+                head_config = AssetManager.ANIM_CONFIG.get("boss_head", {})
                 if head_config and "frames" in head_config:
                     self.head_anim_frame %= head_config["frames"]
 
-        # Logic bình thường khi còn sống
-        self._update_ai_state(self.game.states["playing"].player, level)
+        # Logic AI bình thường
+        self._update_ai_state(player, level)
         if self.speech_timer > 0:
             self.speech_timer -= delta_time
 
@@ -229,7 +280,8 @@ class BossShadowKing(Enemy):
         important_states = (self.action_delay > 0 or 
                             self.slash_warning_visual > 0 or 
                             self.is_lightning_active or 
-                            self.is_dead_body)
+                            self.is_dead_body or
+                            self.is_transforming)
         
         # Nếu đang gồng chiêu hoặc đã chết mà lời thoại định hiển thị là "bị đánh" thì BỎ QUA
         if important_states and category in ["hit_head", "hit_body"]:
@@ -249,7 +301,7 @@ class BossShadowKing(Enemy):
             self.anim_frame += 1
 
     def _update_ai_state(self, player, level):
-        # Cộng dồn thời gian (Đã hết lỗi nhờ self.timer ở init)
+        # Cộng dồn thời gian
         self.timer += 1/60.0
         
         is_resting_or_attacking = (
@@ -311,6 +363,10 @@ class BossShadowKing(Enemy):
             if self.idle_timer <= 0: self.decide_attack(player)
 
     def take_damage(self, amount, knockback_dir=0):
+        # Đang biến hình thì không nhận damage (miễn nhiễm)
+        if self.is_transforming:
+            return
+            
         player = self.game.states["playing"].player
         level = self.game.states["playing"].level
         is_headshot = False
@@ -333,10 +389,7 @@ class BossShadowKing(Enemy):
             self.spawn_mid_battle_items()
             self.spawned_milestones["75"] = True
             
-        # Kiểm tra mốc 50%
-        if not self.spawned_milestones["50"] and self.hp <= (self.max_hp * 0.50):
-            self.spawn_mid_battle_items()
-            self.spawned_milestones["50"] = True
+        # LƯU Ý: Mốc 50% đã được chuyển vào hàm Update để chạy đồng bộ với biến hình
             
         # Kiểm tra mốc 25%
         if not self.spawned_milestones["25"] and self.hp <= (self.max_hp * 0.25):
@@ -428,13 +481,17 @@ class BossShadowKing(Enemy):
         base_angle = math.atan2(dy, dx)
         for spread in [-0.3, 0, 0.3]: 
             vx, vy = math.cos(base_angle + spread), math.sin(base_angle + spread)
-            
-            # --- THAY ĐỔI TẠI ĐÂY ---
+
             # Tạo BossFireball thay vì EnemyFireball
             fb = BossFireball(self.game, cx, cy, vx, vy, 1)
-            # ----------------------
-            
-            fb.speed = 4.5
+
+            # Chuyển sprite cầu lửa sang p2 nếu Boss dưới 50% máu
+            if self.has_transformed:
+                fb.anim_state = "boss_fireball_p2"
+                fb.speed = 5.5 # Có thể buff thêm speed lửa ở Phase 2
+            else:
+                fb.speed = 4.5
+                
             level.entities.append(fb)
         self.start_idle()
 
@@ -453,7 +510,6 @@ class BossShadowKing(Enemy):
         item_y = random.randint(200, 350)
         
         level = self.game.states["playing"].level
-        # Giả sử bạn đã có class Heart và Mana trong game.entities.items
         try:
             from game.entities.collectible import Heart, ManaBottle
             level.entities.append(Heart(self.game, item_x, item_y))
@@ -502,7 +558,46 @@ class BossShadowKing(Enemy):
                 sdl2.SDL_RenderFillRect(renderer, sdl2.SDL_Rect(ldx, 0, self.lightning_width, SCREEN_HEIGHT))
             sdl2.SDL_SetRenderDrawBlendMode(renderer, sdl2.SDL_BLENDMODE_NONE)
 
-        # 2. Render sprite boss 128x128
+        # === 2. AURA PHASE 2 (CHẬM VÀ VÁT GÓC MỀM HƠN) ===
+        if self.has_transformed and not self.is_dead_body:
+            sdl2.SDL_SetRenderDrawBlendMode(renderer, sdl2.SDL_BLENDMODE_BLEND)
+            
+            # Nhấp nháy chậm hơn (nhân 2.5 thay vì 5)
+            aura_size = int(12 * math.sin(self.timer * 1.5)) 
+            
+            base_x = int(self.fixed_x - camera.x - aura_size)
+            base_y = int(self.fixed_y - camera.y - aura_size)
+            base_w = self.body_w + aura_size * 2
+            base_h = self.body_h + aura_size * 2
+            
+            # Bán kính bo góc ảo
+            r = 25 
+            
+            # Vẽ nhiều lớp hình chữ nhật chữ thập mờ dần để tạo cảm giác bo tròn phát sáng
+            # Các thông số: (Alpha, Độ mở rộng thêm)
+            layers = [(20, 15), (40, 5), (60, 0)]
+            
+            for a_layer, expand in layers:
+                w = base_w + expand + 10
+                h = base_h + expand
+                if w <= 0 or h <= 0: continue
+                
+                x = base_x - expand//2 -30
+                y = base_y - expand//2 -20
+                
+                sdl2.SDL_SetRenderDrawColor(renderer, 138, 43, 226, a_layer)
+                
+                # Rect dọc (bỏ qua 4 góc vát)
+                rect_v = sdl2.SDL_Rect(x + r, y, w - 2*r, h)
+                # Rect ngang (bỏ qua 4 góc vát)
+                rect_h = sdl2.SDL_Rect(x, y + r, w, h - 2*r)
+                
+                sdl2.SDL_RenderFillRect(renderer, rect_v)
+                sdl2.SDL_RenderFillRect(renderer, rect_h)
+                
+            sdl2.SDL_SetRenderDrawBlendMode(renderer, sdl2.SDL_BLENDMODE_NONE)
+
+        # 3. Render sprite boss 128x128
         texture, srcrect = AssetManager.get_anim_info(self.anim_state, self.anim_frame)
 
         if texture:
@@ -513,20 +608,22 @@ class BossShadowKing(Enemy):
             draw_w = int(sprite_w * scale)   # = 384
             draw_h = int(sprite_h * scale)   # = 384
 
-            # Offset chính xác cho boss lớn
-            offset_x = (sprite_w - self.body_w) // 2 + 150       # căn giữa + điều chỉnh nhỏ
-            offset_y = 185                      # sprite nằm ở phần đầu (thử nghiệm giá trị này)
+            offset_x = (sprite_w - self.body_w) // 2 + 150       
+            offset_y = 185                                      
 
-            # Dịch chuyển khi attack (jut)
             if 'attack' in self.anim_state:
                 jut_offset = self.attack_jut if self.direction > 0 else -self.attack_jut
                 offset_x += jut_offset
 
             draw_x = int(self.fixed_x - camera.x - offset_x)
             draw_y = int(self.fixed_y - camera.y - offset_y)
+            
+            # Hiệu ứng rung bần bật khi đang gồng biến hình
+            if self.is_transforming:
+                draw_x += random.randint(-4, 4)
+                draw_y += random.randint(-4, 4)
 
             dstrect = sdl2.SDL_Rect(draw_x, draw_y, draw_w, draw_h)
-
             flip = sdl2.SDL_FLIP_HORIZONTAL if self.direction < 0 else sdl2.SDL_FLIP_NONE
 
             sdl2.SDL_SetTextureAlphaMod(texture, alpha)
@@ -534,7 +631,6 @@ class BossShadowKing(Enemy):
             sdl2.SDL_SetTextureAlphaMod(texture, 255)
 
         else:
-            # Fallback (nếu sprite chưa load)
             bdx = int(self.fixed_x - camera.x)
             bdy = int(self.fixed_y - camera.y)
             sdl2.SDL_SetRenderDrawColor(renderer, *self.color[:3], alpha)
@@ -545,21 +641,19 @@ class BossShadowKing(Enemy):
             sdl2.SDL_SetRenderDrawColor(renderer, 255, 0, 255, alpha)
             sdl2.SDL_RenderFillRect(renderer, sdl2.SDL_Rect(hdx, hdy, self.head_w, self.head_h))
         
-        # Render HEAD (chỉ khi idle và còn sống)
-        if self.anim_state == "boss_idle" and not self.is_dead_body:
+        # Render HEAD (chỉ khi idle và còn sống, ẨN khi đang gồng biến hình)
+        if self.anim_state in ["boss_idle", "boss_idle_p2"] and not self.is_dead_body and not self.is_transforming:
             head_texture, head_srcrect = AssetManager.get_anim_info("boss_head", self.head_anim_frame)
             
             if head_texture:
-                head_sprite_w = head_sprite_h = 80   # kích thước gốc của head sprite
-                head_scale = 1.5                     # có thể chỉnh khác body
+                head_sprite_w = head_sprite_h = 80   
+                head_scale = 1.5                     
                 head_draw_w = int(head_sprite_w * head_scale)
                 head_draw_h = int(head_sprite_h * head_scale)
 
-                # Offset để head nằm đúng vị trí trên body (cần tune tay)
-                head_offset_x = 15                   # dịch ngang
-                head_offset_y = -90                  # dịch lên trên (âm = lên)
+                head_offset_x = 15                   
+                head_offset_y = -90                  
 
-                # Flip khi hướng trái
                 if self.direction < 0:
                     head_offset_x = -head_offset_x - (head_draw_w - self.head_w)
 
@@ -572,38 +666,8 @@ class BossShadowKing(Enemy):
                 sdl2.SDL_SetTextureAlphaMod(head_texture, alpha)
                 sdl2.SDL_RenderCopyEx(renderer, head_texture, head_srcrect, head_dst, 0, None, head_flip)
                 sdl2.SDL_SetTextureAlphaMod(head_texture, 255)
-
-        # # === DEBUG HITBOX (HIỆN RÕ ĐỂ DỄ CHỈNH) ===
-        # # Main hitbox (xanh lá - toàn bộ thân)
-        # sdl2.SDL_SetRenderDrawColor(renderer, 0, 255, 0, 180)   # xanh lá, hơi trong
-        # main_rect = sdl2.SDL_Rect(
-        #     int(self.rect.x - camera.x),
-        #     int(self.rect.y - camera.y),
-        #     self.rect.w,
-        #     self.rect.h
-        # )
-        # sdl2.SDL_RenderDrawRect(renderer, main_rect)
-
-        # # Head hitbox (đỏ - điểm yếu)
-        # sdl2.SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255)   # đỏ đậm
-        # head_screen = sdl2.SDL_Rect(
-        #     int(self.head_rect.x - camera.x),
-        #     int(self.head_rect.y - camera.y),
-        #     self.head_w,
-        #     self.head_h
-        # )
-        # sdl2.SDL_RenderDrawRect(renderer, head_screen)
-        # sdl2.SDL_RenderDrawRect(renderer, head_screen)
-
-        # 3. Render particle khi chết
-        for p in self.particles:
-            px = int(p['x'] - camera.x)
-            py = int(p['y'] - camera.y)
-            size = int(6 * (p['life'] / p['max_life'])) + 2  # nhỏ dần
-            sdl2.SDL_SetRenderDrawColor(renderer, *p['color'][:3], int(p['color'][3] * (p['life'] / p['max_life'])))
-            sdl2.SDL_RenderFillRect(renderer, sdl2.SDL_Rect(px, py, size, size))
         
-        # 4. Thanh máu (ẩn khi chết)
+        # 5. Thanh máu (ẩn khi chết)
         if not self.is_dead_body:
             bar_w, bar_h, bar_x, bar_y = 400, 20, (SCREEN_WIDTH - 400) // 2, 30
             sdl2.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255)

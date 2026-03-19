@@ -463,9 +463,7 @@ class Skeleton(Enemy):
             self.attack_range,
             self.sword_width
         )
-        if self.prep_timer > 0:
-            sdl2.SDL_RenderDrawRect(renderer, sword_render_rect)
-        else:
+        if self.prep_timer <= 0:
             sdl2.SDL_RenderFillRect(renderer, sword_render_rect)
 
     def update(self, delta_time, level):
