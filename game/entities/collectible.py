@@ -72,7 +72,7 @@ class Collectible(Entity):
         self.draw_y = self.rect.y + offset_y  # chỉ dùng khi render, không thay đổi rect
 
         # Check collision với player (xử lý ở playing state hoặc đây)
-        player = self.game.states["playing"].player
+        player = self.game.player
         if player and self.collides_with(player):
             self.on_collect(player)
 
@@ -123,8 +123,7 @@ class Coin(Collectible):
         if self.collected: return  # tránh collect nhiều lần
         self.collected = True
         self._mark_as_collected()
-        player.gold += self.value
-        self.game.player_progress["coin"] = player.gold
+        player.add_gold(self.value)
         if hasattr(player, 'show_speech'):
             player.show_speech(random.choice(PLAYER_COLLECT_QUOTES["coin"]))
         self.kill()  # loại bỏ khỏi game sau khi nhặt
@@ -234,9 +233,8 @@ class Princess(Entity):
         )
         # Vẽ gợi ý tương tác khi Player đứng gần
         # Tính khoảng cách đơn giản để hiện chữ
-        playing_state = self.game.states.get("playing")
-        if playing_state and playing_state.player:
-            player = playing_state.player
+        player = self.game.player
+        if player:
             # Tạo một rect tương tác giả lập để kiểm tra xem có nên hiện chữ "E" không
             interact_check = sdl2.SDL_Rect(int(player.rect.x - 20), int(player.rect.y - 20), 
                                           int(player.rect.w + 40), int(player.rect.h + 40))
@@ -245,6 +243,6 @@ class Princess(Entity):
                 if hasattr(self.game, 'hud'):
                     # Hiển thị text hướng dẫn ngay trên đầu Công chúa
                     self.game.hud._draw_text(
-                        renderer, "Nhấn UP để Giải Cứu", 
+                        renderer, "Giải Cứu", 
                         draw_rect.x - 30, draw_rect.y - 30, (255, 255, 255)
                     )

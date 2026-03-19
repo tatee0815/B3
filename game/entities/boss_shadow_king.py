@@ -192,7 +192,7 @@ class BossShadowKing(Enemy):
             return
 
         self.timer += delta_time
-        player = self.game.states["playing"].player if "playing" in self.game.states else None
+        player = self.game.player
         
         # --- LOGIC BIẾN HÌNH ---
         # 1. Bắt đầu biến hình
@@ -367,7 +367,7 @@ class BossShadowKing(Enemy):
         if self.is_transforming:
             return
             
-        player = self.game.states["playing"].player
+        player = self.game.player
         level = self.game.states["playing"].level
         is_headshot = False
 

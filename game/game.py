@@ -60,7 +60,7 @@ class Game:
 
         # Progress người chơi
         self.player_progress = {
-            "current_level": "boss_arena",
+            "current_level": "level1_village",
             "unlocked_skills": ["melee"],
             "double_jump": False,
             "skill_a_upgraded": False,
@@ -69,12 +69,13 @@ class Game:
             "play_time": 0.0,
             "opened_chests": [],
             "checkpoint": None,
-            "coin": 0,          # ← THÊM
-            "lives": MAX_LIVES  # ← THÊM
+            "coin": 0,       
+            "lives": MAX_LIVES 
         }
         self.player_progress = load_game(self.player_progress)
-
         self.lives = self.player_progress.get("lives", MAX_LIVES)
+
+        self.setup()
 
         # Camera & HUD
         self.camera = Camera(self, SCREEN_WIDTH, SCREEN_HEIGHT)
@@ -100,6 +101,7 @@ class Game:
         AudioManager.play_bgm()
 
     def setup(self):
+        """Khởi tạo Player một lần duy nhất cho toàn bộ game"""
         from game.entities.player import Player
         self.player = Player(self)
 
@@ -211,7 +213,7 @@ class Game:
                 
     def reset_progress(self):
         self.player_progress = {
-            "current_level": "boss_arena",
+            "current_level": "level1_village",
             "unlocked_skills": ["melee"],
             "double_jump": False,
             "skill_a_upgraded": False,
@@ -224,6 +226,10 @@ class Game:
             "lives": MAX_LIVES 
         }
         self.lives = MAX_LIVES
+
+        if self.player:
+            self.setup()
+
         if "playing" in self.states:
             self.states["playing"].is_initialized = False
 
@@ -275,8 +281,6 @@ class Game:
     def on_quit(self):
         # Nếu đang trong trạng thái chơi, hãy lấy checkpoint cuối cùng của player gán vào progress
         if self.current_state.name == "playing":
-            player = self.states["playing"].player
-            if player and hasattr(player, 'checkpoint_pos'):
-                self.player_progress["checkpoint"] = player.checkpoint_pos
-                
+            if self.player and hasattr(self.player, 'checkpoint_pos'):
+                self.player_progress["checkpoint"] = self.player.checkpoint_pos
         save_game(self.player_progress)

@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
+import random
 import sdl2
 import json
 import os
 import ctypes
 import sdl2.sdlttf as ttf
 from game.constants import TILE_SIZE, SCREEN_WIDTH, SCREEN_HEIGHT, GRAVITY
-from game.entities.enemy import Goblin, Skeleton, FireBat
+from game.entities.enemy import Enemy, Goblin, Skeleton, FireBat
 from game.entities.collectible import Coin, Collectible, ManaBottle, Heart, Princess
 from game.entities.boss_shadow_king import BossShadowKing
 from game.objects.breakable import BreakableBox
@@ -20,7 +21,7 @@ class Level:
         self.name = ""
         self.width = 0 
         self.height = 0
-        self.tile_size = 32  # THÊM DÒNG NÀY: Mặc định là 32
+        self.tile_size = TILE_SIZE
         self.pixel_width = 0    
         self.pixel_height = 0   
         self.entities = []
@@ -81,6 +82,7 @@ class Level:
                 
                 if "start_position" in data:
                     self.start_position = (data["start_position"]["x"], data["start_position"]["y"])
+                    print(f"[Level] Start position: {self.start_position}")
                 return True
         except Exception as e:
             print(f"[Level] Lỗi JSON: {e}")
@@ -367,7 +369,8 @@ class Level:
                 boss = BossShadowKing(self.game, e['x'], e['y'])  # vị trí tùy level
                 self.entities.append(boss)
                 self.enemies.append(boss)
-                # Projectile sẽ được thêm động trong skill_a_fire()
+        
+        self.spawn_random_collectibles(count=10, types=[Coin, Heart])
     
     def spawn_enemy(self, enemy_type: str, x: int, y: int):
         """
@@ -403,7 +406,7 @@ class Level:
         return enemy
 
     def update_entities(self, delta_time):
-        player = self.game.states["playing"].player
+        player = self.game.player
         if not player: return
 
         # 1. UPDATE PLATFORMS TRƯỚC (Rất quan trọng)
@@ -426,9 +429,20 @@ class Level:
                 self.entities.remove(entity)
                 continue
 
-            # --- B. UPDATE CHUNG (Trọng lực, vị trí...) ---
+            # --- A. UPDATE CHUNG (Trọng lực, vị trí...) ---
             if hasattr(entity, 'update'):
                 entity.update(delta_time, self)
+            
+            # --- B. KIỂM TRA LAVA CHO QUÁI ---
+            if isinstance(entity, Enemy) and entity.alive and not entity.is_dead_body:
+            # Kiểm tra điểm giữa chân enemy (hoặc có thể kiểm tra nhiều điểm)
+                tile_x = (entity.rect.x + entity.rect.w // 2) // self.tile_size  # centerx
+                tile_y = (entity.rect.y + entity.rect.h) // self.tile_size # lấy ô ngay dưới chân
+
+                if 0 <= tile_x < self.width and 0 <= tile_y < self.height:
+                    if self.tiles[tile_y][tile_x] == 3:   # lava
+                        entity.die()
+                        continue
 
             # --- C. CHẶN RƠI CHO ITEM VÀ THÙNG ---
             if isinstance(entity, (Collectible, BreakableBox)):
@@ -460,12 +474,12 @@ class Level:
                 if hasattr(entity, 'update'):
                     entity.update(delta_time, self)
 
-            # --- D. QUÁI VẬT VÀ CÁC THỨ CÒN LẠI ---
+            # --- E. QUÁI VẬT VÀ CÁC THỨ CÒN LẠI ---
             elif hasattr(entity, 'update'):
                 # Vì Checkpoint đã xử lý ở mục A, ở đây chỉ còn Enemy/Projectiles...
                 entity.update(delta_time, self)
 
-        # --- E. BẢO HIỂM RƠI XUYÊN MAP (CHỐNG BUG) ---
+        # --- F. BẢO HIỂM RƠI XUYÊN MAP (CHỐNG BUG) ---
         if player.pos_y > self.pixel_height:
             player.pos_y = float(self.pixel_height - player.rect.h)
             player.rect.y = int(player.pos_y)
@@ -522,6 +536,80 @@ class Level:
             
             if hasattr(entity, 'render'):
                 entity.render(renderer, camera)
+
+    def spawn_random_collectibles(self, count=5, types=None):
+        """
+        Spawn ngẫu nhiên collectible trên mặt đất (tile rắn ID 1 hoặc 2),
+        đảm bảo không gian phía trên ô đất là trống (không có tile rắn).
+        - count: số lượng item muốn spawn
+        - types: list các class collectible (mặc định: [Coin, Heart, ManaBottle])
+        Trả về số lượng đã spawn thành công.
+        """
+        if types is None:
+            types = [Coin, Heart, ManaBottle]
+
+        # Thu thập tất cả ô đất (tile rắn) có thể spawn phía trên
+        ground_tiles = []
+        for row in range(self.height):
+            for col in range(self.width):
+                if self.tiles[row][col] in (1, 2):
+                    ground_tiles.append((col, row))
+
+        if not ground_tiles:
+            print("[Level] Không có ô đất nào để spawn collectible!")
+            return 0
+
+        spawned = 0
+        attempts = 0
+        max_attempts = count * 50  # tăng lên để có nhiều cơ hội tìm ô hợp lệ
+
+        while spawned < count and attempts < max_attempts:
+            attempts += 1
+            col, row = random.choice(ground_tiles)
+            item_class = random.choice(types)
+
+            # Kích thước mỗi loại item (dựa trên định nghĩa trong collectible.py)
+            if item_class == Coin:
+                w, h = 20, 20
+            elif item_class == Heart:
+                w, h = 22, 20
+            elif item_class == ManaBottle:
+                w, h = 24, 28
+            else:
+                w, h = 24, 24  # fallback
+
+            # Tính tọa độ spawn (căn giữa ô và đặt trên mặt đất)
+            x = col * self.tile_size + (self.tile_size - w) // 2
+            y = row * self.tile_size - h
+
+            # Kiểm tra không vượt ra ngoài map
+            if x < 0 or x + w > self.pixel_width or y < 0:
+                continue
+
+            # --- KIỂM TRA KHÔNG GIAN PHÍA TRÊN ---
+            # Xác định các dòng tile mà item chiếm (từ trên cùng đến ngay trên ô đất)
+            top_row = y // self.tile_size
+            # Nếu top_row < 0 (item nhô lên trên map) -> bỏ qua
+            if top_row < 0:
+                continue
+
+            space_ok = True
+            # Kiểm tra tất cả các dòng từ top_row đến row-1
+            for r in range(top_row, row):
+                # Nếu có bất kỳ tile rắn nào (ID >=1) thì không spawn được
+                if self.tiles[r][col] >= 1:
+                    space_ok = False
+                    break
+
+            if not space_ok:
+                continue
+
+            # Tạo item và thêm vào danh sách entities
+            item = item_class(self.game, x, y)
+            self.entities.append(item)
+            spawned += 1
+
+        return spawned
 
 class BackgroundLayer:
     def __init__(self, renderer, texture_key, scroll_speed, y_offset=0, alpha=255):

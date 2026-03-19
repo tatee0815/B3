@@ -6,54 +6,69 @@ class PlayingState:
     def __init__(self, game):
         self.game = game
         self.name = "playing"
-        self.player = None
         self.level = Level(self.game) # Khởi tạo instance Level
         self.is_initialized = False
+
+    @property
+    def player(self):
+        """Lấy Player từ hệ thống Game chính"""
+        return self.game.player
 
     def on_enter(self, **kwargs):
         force_reset = kwargs.get("reset", False)
         menu_continue = kwargs.get("menu_continue", False)
         from_intro = kwargs.get("from_intro", False)
-        
-        # --- BƯỚC 1: NẠP DỮ LIỆU (Chạy khi mới mở game hoặc Reset) ---
-        # Chúng ta nạp Map và tạo Player trước, nhưng CHƯA đặt vị trí vội
-        if not self.is_initialized or force_reset:
-            if force_reset:
+
+        just_loaded_map = False
+
+        # --- BƯỚC 1: NẠP DỮ LIỆU (nếu cần) ---
+        if not self.is_initialized or force_reset or from_intro:
+            if force_reset or from_intro:
                 self.game.reset_progress()
-            
+
             level_name = self.game.player_progress["current_level"]
             if self.level.load_from_json(level_name):
-                from game.entities.player import Player
-                self.player = Player(self.game)
                 self.level.spawn_all_entities(self.game)
                 self.is_initialized = True
+                just_loaded_map = True
 
-        # --- BƯỚC 2: XỬ LÝ VỊ TRÍ NHÂN VẬT (Đây là chỗ quyết định) ---
+        # --- BƯỚC 2: XỬ LÝ VỊ TRÍ NHÂN VẬT & CHECKPOINT ---
         saved_cp = self.game.player_progress.get("checkpoint")
 
         if from_intro:
-            # Nếu bắt đầu mới: Xóa checkpoint, về đầu map
+            # Bắt đầu mới: xóa checkpoint, về spawn, lưu spawn làm checkpoint
             self.game.player_progress["checkpoint"] = None
             spawn_pos = self.level.get_spawn_position()
             self.player.respawn(spawn_pos)
+            self.player.checkpoint_pos = spawn_pos
+            self.game.player_progress["checkpoint"] = spawn_pos
 
         elif menu_continue:
-            # Nếu Tiếp tục từ Menu: Ưu tiên Checkpoint, nếu không có mới về đầu map
+            # Tiếp tục từ menu: ưu tiên checkpoint, nếu không có thì về spawn và lưu
             if saved_cp:
                 self.player.respawn(saved_cp)
                 self.player.checkpoint_pos = saved_cp
             else:
                 spawn_pos = self.level.get_spawn_position()
                 self.player.respawn(spawn_pos)
+                self.player.checkpoint_pos = spawn_pos
+                self.game.player_progress["checkpoint"] = spawn_pos
 
-        elif force_reset:
-            # Nếu chết/reset trong game: Về checkpoint gần nhất
-            target = saved_cp if saved_cp else self.level.get_spawn_position()
-            self.player.respawn(target)
+        elif force_reset or just_loaded_map:
+            # Trường hợp chết/reset trong game hoặc vừa load map (do qua màn)
+            if saved_cp:
+                # Có checkpoint (do rương hoặc từ trước) -> respawn tại đó
+                self.player.respawn(saved_cp)
+                self.player.checkpoint_pos = saved_cp
+            else:
+                # Không có checkpoint (mới qua màn) -> về spawn và lưu
+                spawn_pos = self.level.get_spawn_position()
+                self.player.respawn(spawn_pos)
+                self.player.checkpoint_pos = spawn_pos
+                self.game.player_progress["checkpoint"] = spawn_pos
 
         # --- BƯỚC 3: CẬP NHẬT CAMERA ---
         if hasattr(self.game, 'camera'):
-            # Nếu vừa Resume từ Pause, cho camera bám theo vị trí hiện tại ngay
             self.game.camera.update(self.player)
         
     def update(self, delta_time):
@@ -80,11 +95,34 @@ class PlayingState:
             if enemy.alive and sdl2.SDL_HasIntersection(self.player.rect, enemy.rect):
                 knock_dir = -1 if self.player.rect.x < enemy.rect.x else 1
                 self.player.take_damage(enemy.damage, knock_dir)
-                
-                # Enemy bật lùi nhẹ
-                enemy.direction *= -1
-                enemy.vel_x = -knock_dir * 4.0
-                enemy.pos_x += enemy.vel_x * 5  # đẩy xa thêm tí cho đẹp
+
+                # ---  XỬ LÝ VA CHẠM CỨNG (ĐẨY PLAYER RA, CHẶN DI CHUYỂN) ---
+                # Sau khi knockback, kiểm tra lại nếu vẫn còn overlap
+                if sdl2.SDL_HasIntersection(self.player.rect, enemy.rect):
+                    player_left = self.player.rect.x
+                    player_right = self.player.rect.x + self.player.rect.w
+                    player_center_x = self.player.rect.x + self.player.rect.w // 2
+
+                    enemy_left = enemy.rect.x
+                    enemy_right = enemy.rect.x + enemy.rect.w
+                    enemy_center_x = enemy.rect.x + enemy.rect.w // 2
+
+                    # Xác định player đang ở bên trái hay phải enemy
+                    if player_center_x < enemy_center_x:
+                        # Player bên trái → đẩy player sang trái
+                        overlap = player_right - enemy_left
+                        self.player.rect.x -= overlap
+                    else:
+                        # Player bên phải → đẩy player sang phải
+                        overlap = enemy_right - player_left
+                        self.player.rect.x += overlap
+
+                    self.player.pos_x = float(self.player.rect.x)
+
+                    # Chặn player nếu đang di chuyển về phía enemy
+                    if (self.player.facing_right and player_center_x < enemy_center_x) or \
+                    (not self.player.facing_right and player_center_x > enemy_center_x):
+                        self.player.vel_x = 0
 
         # 6. Camera bám player
         if hasattr(self.game, 'camera'):

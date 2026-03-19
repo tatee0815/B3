@@ -89,7 +89,10 @@ class CutsceneState:
             self.bg_alpha = int(255 - (255 - self.target_alpha) * fade_progress)
 
         if self.timer >= self.duration:
-            self.game.change_state(self.next_state)
+            if self.mode == "intro":                           # <-- THÊM
+                self.game.change_state(self.next_state, from_intro=True)
+            else:
+                self.game.change_state(self.next_state)
 
     def _draw_big_text(self, renderer, text, x, y, color=(255, 255, 255), scale=1.5):
         if not text or not hasattr(self.game, 'font'): return

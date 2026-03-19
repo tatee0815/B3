@@ -13,7 +13,6 @@ class Player(Entity):
         # Khởi tạo tại tọa độ mặc định, kích thước nhân vật 24x48
         super().__init__(game, x=100, y=400, w=24, h=48)
         self.z_index = 4
-
         progress = self.game.player_progress
         
         # Chỉ số cơ bản
@@ -22,10 +21,12 @@ class Player(Entity):
         self.mana_warning_timer = 0
         self.mana_warning_duration = 1.0  # Thời gian hiển thị cảnh báo thiếu mana (giây)
         self.gold = progress.get("coin", 0)
+        self.gold_milestone = self.gold // 20
         self.invincible_time = 0.0   # Thời gian bất tử (giây)
         self.invincible_duration = 2.0        # Thời gian bất tử sau khi bị đánh (giây)
         self.knockback_vel_x = 0.0 # Vận tốc knockback theo trục X (bật lùi)
-        
+        self.checkpoint_pos = progress.get("checkpoint")
+
         # Trạng thái di chuyển (Để tránh khựng phím)
         self.moving_left = False
         self.moving_right = False
@@ -55,8 +56,6 @@ class Player(Entity):
 
         self.recoil_timer = 0
         self.recoil_force = 5 # Độ mạnh của lực bật lùi
-
-        self.debug_mode = False # Đổi thành False để ẩn khung đỏ khi xong
         
         self.is_respawning = False
         self.state = "idle"
@@ -72,6 +71,8 @@ class Player(Entity):
         self.anim_frame = 0
         self.anim_timer = 0
         self.anim_speed = 0.1 # Tốc độ chuyển frame (giây)
+
+        self.debug_mode = False # Đổi thành False để ẩn khung đỏ khi xong
 
     def handle_input(self, event):
         """Xử lý phím dựa trên KEY_BINDINGS_DEFAULT"""
@@ -347,7 +348,23 @@ class Player(Entity):
                 self.hp = 0 # Hiệp sĩ tử trận
             else:
                 self.alive = False # Quái biến mất
-    
+
+    def add_gold(self, amount):
+        """Cộng vàng, kiểm tra mốc để tăng mạng."""
+        self.gold += amount
+        self.game.player_progress["coin"] = self.gold
+
+        new_milestone = self.gold // 20
+        if new_milestone > self.gold_milestone:
+            extra = new_milestone - self.gold_milestone
+            self.game.lives += extra
+            self.game.player_progress["lives"] = self.game.lives
+            self.gold_milestone = new_milestone
+
+            # Hiển thị thông báo (tuỳ chọn)
+            if hasattr(self, 'show_speech'):
+                self.show_speech(f"+{extra} Mạng!", 2.0)
+
     def take_damage(self, amount, knockback_dir=1):
         """Player bị quái đánh - đã tích hợp invincible + knockback"""
         if self.is_respawning or self.invincible_time > 0 or self.debug_mode :
@@ -380,7 +397,13 @@ class Player(Entity):
             self.game.player_progress['total_deaths'] += 1
         # Hồi sinh nếu còn mạng
         self.is_respawning = True
-        self.respawn(self.checkpoint_pos)
+        spawn_pos = self.checkpoint_pos
+        if not spawn_pos:
+            if "playing" in self.game.states:
+                spawn_pos = self.game.states["playing"].level.get_spawn_position()
+            else:
+                spawn_pos = (100, 400)
+        self.respawn(spawn_pos)
         self.hp = PLAYER_MAX_HP
         self.is_respawning = False
 
@@ -411,8 +434,8 @@ class Player(Entity):
         # 1. Đưa tọa độ về vị trí an toàn
         self.rect.x = int(pos[0])
         self.rect.y = int(pos[1])
-        self.pos_x = int(self.rect.x) # Cập nhật cả pos_x/y của lớp base
-        self.pos_y = int(self.rect.y)
+        self.pos_x = float(self.rect.x) 
+        self.pos_y = float(self.rect.y)
 
         # 2. QUAN TRỌNG: Triệt tiêu toàn bộ vận tốc cũ
         self.vel_x = 0
@@ -520,7 +543,6 @@ class Player(Entity):
 
     def activate_cheat_mode(self):
         """Mở khóa toàn bộ kỹ năng và hồi đầy chỉ số"""
-        print("--- CHEAT MODE ACTIVATED ---")
         
         # 1. Mở khóa tất cả skill trong tiến trình game
         all_skills = ["dash", "double_jump", "skill_a"]

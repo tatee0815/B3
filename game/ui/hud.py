@@ -27,7 +27,7 @@ class HUD:
             self.current_font_size = target_size
 
     def render(self, renderer):
-        player = self.game.states["playing"].player
+        player = self.game.player
         if not player: return
         
         self._load_font()

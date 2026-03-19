@@ -135,7 +135,7 @@ class MenuState:
         elif choice == "Bắt đầu mới":
             # Buộc PlayingState phải load lại map và reset Player về vị trí spawn gốc
             self.game.reset_progress()  # Đảm bảo reset lại progress nếu có
-            self.game.change_state("intro")
+            self.game.change_state("intro", from_intro=True)
             
         elif choice == "Cài đặt":
             self.game.change_state("setting")

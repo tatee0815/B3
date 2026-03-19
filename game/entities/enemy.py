@@ -77,8 +77,7 @@ class Enemy(Entity):
         if self.knockback_timer > 0:
             self.knockback_timer -= delta_time
         else:
-            playing_state = self.game.states.get("playing")
-            player = playing_state.player if playing_state else None
+            player = self.game.player
             if player:
                 self._update_ai_state(player, level)
 
@@ -143,7 +142,7 @@ class Enemy(Entity):
 
         for row in range(start_row, end_row):
             for col in range(start_col, end_col):
-                if level.tiles[row][col] == 1:
+                if level.tiles[row][col] in (1, 2):
                     tile_rect = sdl2.SDL_Rect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE)
                     if sdl2.SDL_HasIntersection(self.rect, tile_rect):
                         if is_y:
@@ -163,9 +162,8 @@ class Enemy(Entity):
         self.hp -= amount
         self.show_speech("hit")
         
-        # --- FIX: Khi bị đánh, lập tức quay lại nhìn và dí player ---
-        playing_state = self.game.states.get("playing")
-        player = playing_state.player if playing_state else None
+        # --- Khi bị đánh, lập tức quay lại nhìn và dí player ---
+        player = self.game.player
         
         if player:
             self.is_chasing = True
@@ -668,7 +666,7 @@ class EnemyFireball(Entity):
         self.life_time -= delta_time
         
         # Kiểm tra va chạm
-        player = self.game.states["playing"].player
+        player = self.game.player
         if player and sdl2.SDL_HasIntersection(self.rect, player.rect):
             # Lấy hướng đẩy lùi dựa trên hướng bay của đạn
             k_dir = 1 if self.dir_x > 0 else -1

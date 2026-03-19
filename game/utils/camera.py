@@ -46,6 +46,25 @@ class Camera:
             self.x += max(-60, min(60, move_x))
             self.y += max(-60, min(60, move_y))
 
-    def reset(self, start_x=0, start_y=0):
-        self.x = start_x
-        self.y = start_y
+    def reset(self, player=None):
+        """Nếu truyền player vào, camera sẽ snap thẳng đến vị trí player mà không bị trượt (smooth)"""
+        if player:
+            p_center_x = player.rect.x + (player.rect.w // 2)
+            p_center_y = player.rect.y + (player.rect.h // 2)
+            
+            target_x = p_center_x - self.width // 2
+            target_y = p_center_y - self.height // 2
+            
+            playing_state = self.game.states.get("playing")
+            if playing_state and playing_state.level:
+                lvl = playing_state.level
+                max_x = max(0, lvl.pixel_width - self.width)
+                max_y = max(0, lvl.pixel_height - self.height)
+                target_x = max(0, min(target_x, max_x))
+                target_y = max(0, min(target_y, max_y))
+            
+            self.x = float(target_x)
+            self.y = float(target_y)
+        else:
+            self.x = 0
+            self.y = 0
