@@ -20,7 +20,12 @@ class MenuState:
     def __init__(self, game):
         self.game = game
         self.name = "menu"
-        self.options = ["Tiếp tục","Bắt đầu mới", "Cài đặt", "Thoát game"]
+
+        self.main_options = ["Chơi 1 người", "Chơi 2 người", "Cài đặt", "Thoát game"]
+        self.sp_options = ["Tiếp tục", "Bắt đầu mới", "Quay lại"]
+        self.options = self.main_options
+        self.current_menu = "main"
+
         self.selected = 0
 
         # Assets & Textures
@@ -38,10 +43,14 @@ class MenuState:
 
     def on_enter(self, **kwargs):
         self.selected = 0
+        self.current_menu = "main"
+        self.options = self.main_options
         self.particles.clear()
         if not self.assets_loaded:
             self._init_assets()
             self.assets_loaded = True
+        else:
+            self._refresh_menu_textures()
 
     def _init_assets(self):
         """Khởi tạo toàn bộ tài nguyên, dọn dẹp rác bộ nhớ"""
@@ -69,7 +78,19 @@ class MenuState:
                 self.title_rect = sdl2.SDL_Rect(SCREEN_WIDTH//2 - tw//2, 60, tw, th)
                 sdl2.SDL_FreeSurface(t_surf)
 
-        # 3. Render Options
+        self._refresh_menu_textures()
+
+        h_str = "UP / DOWN : Chọn  |  Z/ENTER : Xác nhận  |  ESC : Thoát"
+        h_surf = ttf.TTF_RenderUTF8_Blended(self.game.font, h_str.encode('utf-8'), sdl2.SDL_Color(220, 220, 220))
+        if h_surf:
+            self.hint_tex = sdl2.SDL_CreateTextureFromSurface(renderer, h_surf)
+            hw, hh = h_surf.contents.w, h_surf.contents.h
+            self.hint_rect = sdl2.SDL_Rect(SCREEN_WIDTH//2 - hw//2, SCREEN_HEIGHT - 65, hw, hh)
+            sdl2.SDL_FreeSurface(h_surf)
+
+    def _refresh_menu_textures(self):
+        for tex, _, _ in self.opt_textures:
+            sdl2.SDL_DestroyTexture(tex)
         self.opt_textures = []
         if hasattr(self.game, 'font') and self.game.font:
             for opt in self.options:
@@ -78,16 +99,6 @@ class MenuState:
                     tex = sdl2.SDL_CreateTextureFromSurface(self.game.renderer, o_surf)
                     self.opt_textures.append((tex, o_surf.contents.w, o_surf.contents.h))
                     sdl2.SDL_FreeSurface(o_surf)
-
-            # 5. Render Hint (Sửa lỗi chữ bị dồn ở góc)
-            h_str = "UP / DOWN : Chọn  |  Z : Xác nhận  |  ESC : Thoát"
-            h_surf = ttf.TTF_RenderUTF8_Blended(self.game.font, h_str.encode('utf-8'), sdl2.SDL_Color(220, 220, 220))
-            if h_surf:
-                self.hint_tex = sdl2.SDL_CreateTextureFromSurface(renderer, h_surf)
-                hw, hh = h_surf.contents.w, h_surf.contents.h
-                # Căn giữa chính xác ở cạnh dưới
-                self.hint_rect = sdl2.SDL_Rect(SCREEN_WIDTH//2 - hw//2, SCREEN_HEIGHT - 65, hw, hh)
-                sdl2.SDL_FreeSurface(h_surf)
 
     def update(self, delta_time):
         self.particle_timer += delta_time
@@ -123,25 +134,45 @@ class MenuState:
             
             # Phím thoát nhanh
             elif scancode == sdl2.SDL_SCANCODE_ESCAPE:
-                self.game.running = False
+                if self.current_menu == "single_player":
+                    self.options = self.main_options
+                    self.current_menu = "main"
+                    self.selected = 0
+                    self._refresh_menu_textures()
+                else:
+                    self.game.running = False
 
     def _handle_selection(self):
         choice = self.options[self.selected]
         
-        if choice == "Tiếp tục":
-            # Kiểm tra nếu có file save thì mới vào game luôn, không thì vào intro
-            self.game.change_state("playing", menu_continue=True)
-            
-        elif choice == "Bắt đầu mới":
-            # Buộc PlayingState phải load lại map và reset Player về vị trí spawn gốc
-            self.game.reset_progress()  # Đảm bảo reset lại progress nếu có
-            self.game.change_state("intro", from_intro=True)
-            
-        elif choice == "Cài đặt":
-            self.game.change_state("setting")
-            
-        elif choice == "Thoát game":
-            self.game.running = False
+        if self.current_menu == "main":
+            if choice == "Chơi 1 người":
+                self.options = self.sp_options
+                self.current_menu = "single_player"
+                self.selected = 0
+                self._refresh_menu_textures()
+            elif choice == "Chơi 2 người":
+                self.game.game_mode = "multi"
+                self.game.change_state("lobby")
+            elif choice == "Cài đặt":
+                self.game.change_state("setting")
+            elif choice == "Thoát game":
+                self.game.running = False
+                
+        elif self.current_menu == "single_player":
+            if choice == "Tiếp tục":
+                self.game.game_mode = "single"
+                self.game.load_selected_game()
+                self.game.change_state("playing", menu_continue=True)
+            elif choice == "Bắt đầu mới":
+                self.game.game_mode = "single"
+                self.game.reset_progress() 
+                self.game.change_state("intro", mode="intro_1p", from_intro=True)
+            elif choice == "Quay lại":
+                self.options = self.main_options
+                self.current_menu = "main"
+                self.selected = 0
+                self._refresh_menu_textures()
 
     def render(self, renderer):
         sdl2.SDL_SetRenderDrawBlendMode(renderer, sdl2.SDL_BLENDMODE_NONE)

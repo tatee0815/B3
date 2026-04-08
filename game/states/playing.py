@@ -21,6 +21,16 @@ class PlayingState:
 
         just_loaded_map = False
 
+        # --- ĐỒNG BỘ LEVEL CHO MULTIPLAYER ---
+        if self.game.game_mode == "multi":
+            if self.game.network.is_host:
+                lv = self.game.player_progress.get("current_level", "level1_village")
+                self.game.network.send_data({"type": "sync_level", "level": lv})
+            else:
+                # Client chờ nhận level từ Host (Thực tế nên làm qua event, 
+                # ở đây tạm gán theo progress chung để tránh lỗi trắng map)
+                pass
+
         # --- BƯỚC 1: NẠP DỮ LIỆU (nếu cần) ---
         if not self.is_initialized or force_reset or from_intro:
             if force_reset or from_intro:
@@ -71,6 +81,15 @@ class PlayingState:
         if hasattr(self.game, 'camera'):
             self.game.camera.update(self.player)
         
+    def handle_network(self, packet):
+        """Nhận gói tin Level Sync từ Host (Nếu là Client)"""
+        if packet.get("type") == "sync_level" and not self.game.network.is_host:
+            host_level = packet.get("level")
+            if self.game.player_progress["current_level"] != host_level:
+                self.game.player_progress["current_level"] = host_level
+                self.is_initialized = False 
+                self.on_enter() # Reload lại map theo host
+
     def update(self, delta_time):
         if not self.player or not self.level:
             return

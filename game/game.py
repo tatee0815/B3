@@ -5,6 +5,7 @@ game.py - Class Game chính
 import sdl2
 import sdl2.ext
 import sdl2.sdlttf as ttf
+from game.utils.network import NetworkManager
 
 from game.constants import (
     SCREEN_WIDTH, SCREEN_HEIGHT, FPS_TARGET,
@@ -13,7 +14,7 @@ from game.constants import (
 )
 from game.utils.assets import AudioManager
 from game.utils.camera import Camera
-from game.utils.save import save_game, load_game
+from game.utils.save import save_game, load_game, get_save_value
 from game.states.menu import MenuState
 from game.states.setting import SettingState
 from game.states.playing import PlayingState
@@ -22,6 +23,7 @@ from game.states.win import WinState
 from game.states.cutsence import CutsceneState
 from game.ui.hud import HUD
 from game.states.game_over import GameOverState
+from game.states.lobby import LobbyState
 
 
 class Game:
@@ -72,6 +74,9 @@ class Game:
             "coin": 0,       
             "lives": MAX_LIVES 
         }
+        self.game_mode = "single"  # "single" hoặc "multiplayer"
+        self.network = NetworkManager()
+
         self.player_progress = load_game(self.player_progress)
         self.lives = self.player_progress.get("lives", MAX_LIVES)
 
@@ -105,6 +110,28 @@ class Game:
         from game.entities.player import Player
         self.player = Player(self)
 
+    def get_save_filename(self):
+        """Trả về tên file tương ứng với chế độ chơi hiện tại"""
+        return "save_sp.json" if self.game_mode == "single" else "save_mp.json"
+
+    def save_current_game(self):
+        """Hàm bọc (wrapper) để các state gọi lưu game nhanh"""
+        filename = self.get_save_filename()
+        # Nếu là chơi mạng, lưu thêm port vào progress để lần sau 'Tiếp tục' tự mở lại
+        if self.game_mode == "multi" and self.network.is_host:
+            self.player_progress["last_port"] = self.network.sock.getsockname()[1]
+            
+        save_game(self.player_progress, filename)
+
+    def load_selected_game(self):
+        """Hàm bọc để nạp đúng file save"""
+        filename = self.get_save_filename()
+        self.player_progress = load_game(self.player_progress, filename)
+
+    def load_port_from_save(self, filename="save_mp.json"):
+        """Dùng cho LobbyState khi nhấn 'Tiếp tục' ở chế độ 2 người"""
+        return get_save_value(filename, "last_port", 5555) # Mặc định 5555 nếu không thấy
+
     def _init_fonts(self):
         """Khởi tạo thư viện và nạp font hệ thống"""
         if ttf.TTF_Init() == -1:
@@ -128,6 +155,7 @@ class Game:
         self.states["intro"] = CutsceneState(self, mode = "intro")
         self.states["outro"] = CutsceneState(self, mode = "outro")
         self.states["fail"] = CutsceneState(self, mode="fail")
+        self.states["lobby"] = LobbyState(self)
         
     def change_state(self, state_name, **kwargs):
         if state_name not in self.states:
@@ -136,6 +164,9 @@ class Game:
 
         if self.current_state:
             self.current_state.on_exit()
+
+        if state_name == "intro" and "mode" in kwargs:
+            self.states[state_name] = CutsceneState(self, mode=kwargs["mode"])
 
         self.current_state = self.states[state_name]
         self.current_state.on_enter(**kwargs)
@@ -201,6 +232,11 @@ class Game:
 
         self.delta_time = effective_delta
         self.game_time += effective_delta
+
+        # --- LẮNG NGHE MẠNG MỖI FRAME ---
+        incoming_data = self.network.update_network()
+        if incoming_data and hasattr(self.current_state, "handle_network"):
+            self.current_state.handle_network(incoming_data)
 
         if self.current_state:
             self.current_state.update(effective_delta)
@@ -279,6 +315,7 @@ class Game:
         self.slowmo_factor = strength
 
     def on_quit(self):
+        self.save_current_game()
         # Nếu đang trong trạng thái chơi, hãy lấy checkpoint cuối cùng của player gán vào progress
         if self.current_state.name == "playing":
             if self.player and hasattr(self.player, 'checkpoint_pos'):
