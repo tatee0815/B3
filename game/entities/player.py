@@ -14,6 +14,7 @@ class Player(Entity):
         super().__init__(game, x=100, y=400, w=24, h=48)
         self.z_index = 4
         progress = self.game.player_progress
+        self.role = "knight"
         
         # Chỉ số cơ bản
         self.hp = progress.get("hp", PLAYER_MAX_HP)
@@ -392,9 +393,6 @@ class Player(Entity):
             self.game.player_progress["lives"] = self.game.lives
             if self.game.lives <= 0:
                 self.game.change_state("fail")
-
-        if 'total_deaths' in self.game.player_progress:
-            self.game.player_progress['total_deaths'] += 1
         # Hồi sinh nếu còn mạng
         self.is_respawning = True
         spawn_pos = self.checkpoint_pos

@@ -78,6 +78,8 @@
     {"type": "goblin", "x": 960, "y": 576},
     {"type": "platform", "x": 1350, "y": 850, "w": 96, "h": 20},
     {"type": "platform", "x": 1350, "y": 670, "w": 96, "h": 20},
+    {"type": "buttons", "x": 200, "y": 1150, "gate_id": 1, "w": 32, "h": 16},
+    {"type": "gates", "x": 350, "y": 1100, "w": 96, "h": 20, "gate_id": 1},
     {"type": "heart", "x": 2400, "y": 640}, 
     {"type": "breakable", "x": 2400, "y": 640, "explosive": false},
     {"type": "breakable", "x": 2500, "y": 640, "explosive": false},

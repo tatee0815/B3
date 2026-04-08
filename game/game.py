@@ -71,13 +71,45 @@ class Game:
             "play_time": 0.0,
             "opened_chests": [],
             "checkpoint": None,
-            "coin": 0,       
-            "lives": MAX_LIVES 
+            "coin": 0,
+            "lives": MAX_LIVES
         }
         self.game_mode = "single"  # "single" hoặc "multiplayer"
         self.network = NetworkManager()
 
         self.player_progress = load_game(self.player_progress)
+
+        # Đảm bảo các key cần thiết tồn tại
+        if "play_time" not in self.player_progress:
+            self.player_progress["play_time"] = 0.0
+
+        # Đảm bảo cấu trúc players (cho multiplayer)
+        if "players" not in self.player_progress:
+            # Chuyển đổi từ cấu trúc cũ (single player) sang mới
+            self.player_progress["players"] = {
+                "knight": {
+                    "unlocked_skills": self.player_progress.get("unlocked_skills", ["melee"]),
+                    "double_jump": self.player_progress.get("double_jump", False),
+                    "skill_a_upgraded": self.player_progress.get("skill_a_upgraded", False),
+                    "coin": self.player_progress.get("coin", 0),
+                    "lives": self.player_progress.get("lives", MAX_LIVES),
+                    "hp": self.player_progress.get("hp", PLAYER_MAX_HP),
+                    "mana": self.player_progress.get("mana", 50),
+                    "checkpoint": self.player_progress.get("checkpoint"),
+                    "opened_chests": self.player_progress.get("opened_chests", [])
+                },
+                "princess": {
+                    "unlocked_skills": ["melee"],
+                    "double_jump": False,
+                    "skill_a_upgraded": False,
+                    "coin": 0,
+                    "lives": MAX_LIVES,
+                    "hp": PLAYER_MAX_HP,
+                    "mana": 50,
+                    "checkpoint": None,
+                    "opened_chests": []
+                }
+            }
         self.lives = self.player_progress.get("lives", MAX_LIVES)
 
         self.setup()
@@ -106,9 +138,59 @@ class Game:
         AudioManager.play_bgm()
 
     def setup(self):
-        """Khởi tạo Player một lần duy nhất cho toàn bộ game"""
         from game.entities.player import Player
-        self.player = Player(self)
+        from game.entities.princess import Princess
+        
+        # Đảm bảo cấu trúc players tồn tại (phòng khi load game cũ thiếu)
+        if "players" not in self.player_progress:
+            self.player_progress["players"] = {
+                "knight": {
+                    "unlocked_skills": ["melee"],
+                    "double_jump": False,
+                    "skill_a_upgraded": False,
+                    "coin": 0,
+                    "lives": MAX_LIVES,
+                    "hp": PLAYER_MAX_HP,
+                    "mana": 50,
+                    "checkpoint": None,
+                    "opened_chests": []
+                },
+                "princess": {
+                    "unlocked_skills": ["melee"],
+                    "double_jump": False,
+                    "skill_a_upgraded": False,
+                    "coin": 0,
+                    "lives": MAX_LIVES,
+                    "hp": PLAYER_MAX_HP,
+                    "mana": 50,
+                    "checkpoint": None,
+                    "opened_chests": []
+                }
+            }
+            # Copy dữ liệu cũ nếu có
+            if "coin" in self.player_progress:
+                self.player_progress["players"]["knight"]["coin"] = self.player_progress["coin"]
+            if "lives" in self.player_progress:
+                self.player_progress["players"]["knight"]["lives"] = self.player_progress["lives"]
+            if "checkpoint" in self.player_progress:
+                self.player_progress["players"]["knight"]["checkpoint"] = self.player_progress["checkpoint"]
+            if "opened_chests" in self.player_progress:
+                self.player_progress["players"]["knight"]["opened_chests"] = self.player_progress["opened_chests"]
+            if "unlocked_skills" in self.player_progress:
+                self.player_progress["players"]["knight"]["unlocked_skills"] = self.player_progress["unlocked_skills"]
+            if "double_jump" in self.player_progress:
+                self.player_progress["players"]["knight"]["double_jump"] = self.player_progress["double_jump"]
+        
+        if self.game_mode == "multi" and not self.network.is_host:
+            self.player = Princess(self)
+            self.player.progress = self.player_progress["players"]["princess"]
+        else:
+            self.player = Player(self)
+            self.player.progress = self.player_progress["players"]["knight"]
+        self.player.game = self
+        
+        # Đồng bộ self.lives với player hiện tại
+        self.lives = self.player.progress.get("lives", MAX_LIVES)
 
     def get_save_filename(self):
         """Trả về tên file tương ứng với chế độ chơi hiện tại"""
@@ -242,30 +324,64 @@ class Game:
             self.current_state.update(effective_delta)
 
         if self.current_state.name == "playing":
-            self.player_progress["play_time"] += effective_delta
+            if "play_time" in self.player_progress:
+                self.player_progress["play_time"] += effective_delta
+            else:
+                # Nếu chưa có (do save cũ hoặc reset không đầy đủ) thì tạo mới
+                self.player_progress["play_time"] = effective_delta
             player = self.states["playing"].player
             if player:
                 self.camera.update(player)
                 
     def reset_progress(self):
-        self.player_progress = {
-            "current_level": "level1_village",
-            "unlocked_skills": ["melee"],
-            "double_jump": False,
-            "skill_a_upgraded": False,
-            "total_deaths": 0,
-            "unlocked_skills": [],
-            "play_time": 0.0, 
-            "opened_chests": [],
-            "checkpoint": None, 
-            "coin": 0,          
-            "lives": MAX_LIVES 
-        }
-        self.lives = MAX_LIVES
-
+        # Giữ lại cấu trúc multiplayer nếu có
+        if self.game_mode == "multi":
+            self.player_progress = {
+                "current_level": "level1_village",
+                "play_time": 0.0,
+                "players": {
+                    "knight": {
+                        "unlocked_skills": ["melee"],
+                        "double_jump": False,
+                        "skill_a_upgraded": False,
+                        "coin": 0,
+                        "lives": MAX_LIVES,
+                        "hp": PLAYER_MAX_HP,
+                        "mana": 50,
+                        "checkpoint": None,
+                        "opened_chests": []
+                    },
+                    "princess": {
+                        "unlocked_skills": ["melee"],
+                        "double_jump": False,
+                        "skill_a_upgraded": False,
+                        "coin": 0,
+                        "lives": MAX_LIVES,
+                        "hp": PLAYER_MAX_HP,
+                        "mana": 50,
+                        "checkpoint": None,
+                        "opened_chests": []
+                    }
+                }
+            }
+        else:
+            self.player_progress = {
+                "current_level": "level1_village",
+                "unlocked_skills": ["melee"],
+                "double_jump": False,
+                "skill_a_upgraded": False,
+                "total_deaths": 0,
+                "high_score": 0,
+                "play_time": 0.0,
+                "opened_chests": [],
+                "checkpoint": None,
+                "coin": 0,
+                "lives": MAX_LIVES
+            }
+        if self.player:
+            self.lives = self.player.progress.get("lives", MAX_LIVES)
         if self.player:
             self.setup()
-
         if "playing" in self.states:
             self.states["playing"].is_initialized = False
 
@@ -316,8 +432,11 @@ class Game:
 
     def on_quit(self):
         self.save_current_game()
-        # Nếu đang trong trạng thái chơi, hãy lấy checkpoint cuối cùng của player gán vào progress
         if self.current_state.name == "playing":
             if self.player and hasattr(self.player, 'checkpoint_pos'):
-                self.player_progress["checkpoint"] = self.player.checkpoint_pos
+                # Lưu checkpoint vào đúng progress của player
+                if hasattr(self.player, 'progress'):
+                    self.player.progress["checkpoint"] = self.player.checkpoint_pos
+                else:
+                    self.player_progress["checkpoint"] = self.player.checkpoint_pos
         save_game(self.player_progress)

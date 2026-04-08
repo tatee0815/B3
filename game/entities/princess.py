@@ -8,6 +8,7 @@ from .projectile import Projectile
 class Princess(Player):
     def __init__(self, game):
         super().__init__(game)
+        self.role = "princess"
         # Ghi đè sprite nếu cần (có thể dùng chung sprite hoặc load riêng)
         # Ở đây giả sử dùng chung sprite, nhưng có thể thay bằng sprite công chúa sau
         self.state = "princess_idle"  # để phân biệt animation nếu có
@@ -52,57 +53,62 @@ class Princess(Player):
                 self.moving_right = False
 
     def teleport(self):
-        """Teleport đến ground gần nhất (bề mặt đất/platform)"""
         if self.teleport_cooldown > 0:
             return
         
-        # Tìm ground gần nhất bên dưới hoặc bên trái/phải trong phạm vi 300px
         level = self.game.states["playing"].level
         if not level:
             return
         
-        start_x = self.rect.centerx
-        start_y = self.rect.centery
-        search_range = 350  # pixel
+        # Vị trí hiện tại (tâm)
+        start_x = self.rect.x + self.rect.w // 2
+        start_y = self.rect.y + self.rect.h // 2
+        search_range = 350
         
         best_ground_y = None
+        best_ground_x = None
         best_distance = float('inf')
         
-        # Duyệt các tile và platform để tìm điểm đứng
-        # Kiểm tra các tile trong level
         tile_size = level.tile_size
-        for ty in range(level.height):
-            for tx in range(level.width):
-                tile = level.get_tile(tx, ty)
-                if tile and tile.get("solid"):
-                    tile_x = tx * tile_size
-                    tile_y = ty * tile_size
-                    # Chỉ xét tile nằm trong khoảng cách ngang search_range
+        
+        # 1. Duyệt tất cả tile rắn (ID 1 hoặc 2)
+        for row in range(level.height):
+            for col in range(level.width):
+                tile_id = level.tiles[row][col]
+                if tile_id in (1, 2):  # solid
+                    tile_x = col * tile_size
+                    tile_y = row * tile_size
+                    # Chỉ xét trong khoảng ngang search_range
                     if abs(tile_x - start_x) <= search_range:
-                        # Điểm đứng là trên tile (tile_y - player height)
                         ground_y = tile_y - self.rect.h
-                        # Chỉ nhận nếu ground_y > start_y (dưới chân) hoặc gần ngang
                         dy = ground_y - start_y
                         if dy < 0:
-                            continue  # không teleport lên trên
+                            continue
                         dist = abs(tile_x - start_x) + dy
-                        if dist < best_distance and self.is_ground_safe(ground_y, tile_x):
-                            best_distance = dist
-                            best_ground_y = ground_y
-                            best_ground_x = tile_x
+                        if dist < best_distance:
+                            # Kiểm tra khoảng trống phía trên (không có tile rắn chắn)
+                            space_ok = True
+                            check_y = ground_y + self.rect.h - 1  # ngay trên mặt đất
+                            for check_row in range(row - 1, -1, -1):
+                                if level.tiles[check_row][col] in (1, 2):
+                                    space_ok = False
+                                    break
+                            if space_ok:
+                                best_distance = dist
+                                best_ground_y = ground_y
+                                best_ground_x = tile_x
         
-        # Kiểm tra platform
+        # 2. Duyệt platform
         for plat in level.platforms:
-            if hasattr(plat, 'rect'):
-                plat_top = plat.rect.y
-                ground_y = plat_top - self.rect.h
-                dx = abs(plat.rect.centerx - start_x)
-                if dx <= search_range and ground_y > start_y:
-                    dist = dx + (ground_y - start_y)
-                    if dist < best_distance and self.is_ground_safe(ground_y, plat.rect.x):
-                        best_distance = dist
-                        best_ground_y = ground_y
-                        best_ground_x = plat.rect.x
+            plat_top = plat.rect.y
+            ground_y = plat_top - self.rect.h
+            dx = abs((plat.rect.x + plat.rect.w // 2) - start_x)
+            if dx <= search_range and ground_y > start_y:
+                dist = dx + (ground_y - start_y)
+                if dist < best_distance:
+                    best_distance = dist
+                    best_ground_y = ground_y
+                    best_ground_x = plat.rect.x
         
         if best_ground_y is not None:
             # Teleport
@@ -114,7 +120,6 @@ class Princess(Player):
             self.vel_y = 0
             self.on_ground = True
             self.teleport_cooldown = self.TELEPORT_COOLDOWN_TIME
-            # Hiệu ứng (có thể thêm particle)
             self.show_speech("Teleport!")
 
     def is_ground_safe(self, ground_y, ground_x):
@@ -142,13 +147,13 @@ class Princess(Player):
         
         # Tìm tất cả enemy trong bán kính
         level = self.game.states["playing"].level
-        center_x = self.rect.centerx
-        center_y = self.rect.centery
+        center_x = self.rect.x + self.rect.w // 2
+        center_y = self.rect.y + self.rect.h // 2
         for enemy in level.enemies[:]:
             if not enemy.alive:
                 continue
-            enemy_center_x = enemy.rect.centerx
-            enemy_center_y = enemy.rect.centery
+            enemy_center_x = enemy.rect.x + enemy.rect.w // 2
+            enemy_center_y = enemy.rect.y + enemy.rect.h // 2
             dx = enemy_center_x - center_x
             dy = enemy_center_y - center_y
             dist = math.hypot(dx, dy)

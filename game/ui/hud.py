@@ -65,8 +65,6 @@ class HUD:
 
         self._draw_text(renderer, f"Vàng: {player.gold}", p, bottom_y, (255, 215, 0))
         self._draw_text(renderer, f"Mạng: {self.game.lives}/{MAX_LIVES}", int(p + (180 * sx)), bottom_y, (255, 255, 255))
-        self._draw_text(renderer, f"Chết: {self.game.player_progress['total_deaths']}", int(p + 380 * sx), bottom_y, (220, 60, 60))
-
         
         # Bật lại scale cũ
         sdl2.SDL_RenderSetScale(renderer, self.game.scale_x, self.game.scale_y)

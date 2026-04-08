@@ -11,17 +11,8 @@ class EndPortal(Entity):
         self.timer = 0.0
 
     def update(self, delta_time, level=None):
+        # ❌ KHÔNG xử lý collision ở đây nữa
         self.timer += delta_time
-        
-        playing_state = self.game.states.get("playing")
-        if not playing_state: return
-        player = playing_state.player
-        
-        # Nếu player chạm vào portal
-        if player and self.collides_with(player):
-            # Kích hoạt cờ qua màn trong level
-            if level:
-                level.is_completed = True
 
     def render(self, renderer, camera):
         # Tạo hiệu ứng portal phình to / thu nhỏ nhẹ nhàng

@@ -12,6 +12,8 @@ from game.entities.boss_shadow_king import BossShadowKing
 from game.objects.breakable import BreakableBox
 from game.objects.platform import Platform, MovingPlatform
 from game.utils.assets import AssetManager
+from game.objects.button import Button
+from game.objects.gate import Gate
 
 class Level:
     def __init__(self, game):
@@ -33,6 +35,9 @@ class Level:
         self.start_position = (100, 100)
         self.gravity = GRAVITY
         self.bg_layers = []
+        self.is_completed = False
+        self.buttons = []
+        self.gates = []
 
         self.title_timer = 0.0
         self.title_duration = 10.0  # 10 giây
@@ -280,6 +285,8 @@ class Level:
         self.entities.clear()
         self.enemies.clear() # Xóa danh sách quái cũ
         self.platforms = []
+        self.buttons.clear()  
+        self.gates.clear()
         
         for e in self.entities_data:
             etype = e.get("type")
@@ -368,6 +375,26 @@ class Level:
                 boss = BossShadowKing(self.game, e['x'], e['y'])  # vị trí tùy level
                 self.entities.append(boss)
                 self.enemies.append(boss)
+
+            elif etype == "buttons":
+                btn = Button(
+                    self.game, x, y,
+                    gate_id=e.get("gate_id"),
+                    w=e.get("w", 32),
+                    h=e.get("h", 16)
+                )
+                self.buttons.append(btn)
+                self.entities.append(btn)
+
+            elif etype == "gates":
+                gate = Gate(
+                    self.game, x, y,
+                    w=e.get("w", 64),
+                    h=e.get("h", 32),
+                    gate_id=e.get("gate_id")
+                )
+                self.gates.append(gate)
+                self.entities.append(gate)
         
         self.spawn_random_collectibles(count=10, types=[Coin, ManaBottle])
     
@@ -484,6 +511,37 @@ class Level:
             player.rect.y = int(player.pos_y)
             player.vel_y = 0
             player.on_ground = True
+
+        for gate in self.gates:
+            if gate.solid and sdl2.SDL_HasIntersection(player.rect, gate.rect):
+                # Tính độ chồng lấn
+                overlap_x = min(player.rect.x + player.rect.w, gate.rect.x + gate.rect.w) - max(player.rect.x, gate.rect.x)
+                overlap_y = min(player.rect.y + player.rect.h, gate.rect.y + gate.rect.h) - max(player.rect.y, gate.rect.y)
+                
+                # Xác định hướng va chạm chính (ưu tiên dọc)
+                if overlap_y < overlap_x:
+                    # Va chạm dọc
+                    if player.rect.y + player.rect.h / 2 < gate.rect.y + gate.rect.h / 2:
+                        # Player ở trên gate (đang rơi xuống)
+                        player.rect.y = gate.rect.y - player.rect.h
+                        player.pos_y = float(player.rect.y)
+                        player.vel_y = 0
+                        player.on_ground = True
+                    else:
+                        # Player ở dưới gate (đụng trần)
+                        player.rect.y = gate.rect.y + gate.rect.h
+                        player.pos_y = float(player.rect.y)
+                        player.vel_y = 0
+                else:
+                    # Va chạm ngang
+                    if player.rect.x + player.rect.w / 2 < gate.rect.x + gate.rect.w / 2:
+                        player.rect.x = gate.rect.x - player.rect.w
+                    else:
+                        player.rect.x = gate.rect.x + gate.rect.w
+                    player.pos_x = float(player.rect.x)
+                    if player.is_dashing:
+                        player.is_dashing = False
+                        player.vel_x = 0
     
     def resolve_solid_collision(self, player, obstacle):
         """Xử lý va chạm để Player không đi xuyên qua vật thể rắn (thùng)"""

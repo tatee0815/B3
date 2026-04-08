@@ -29,39 +29,40 @@ class Chest:
     def on_interact(self, player):
         if not self.opened:
             self.opened = True
-            self.show_prompt = False # Tắt chữ khi đã mở
+            self.show_prompt = False
             chest_id = f"{self.rect.x}_{self.rect.y}"
-            if "opened_chests" not in self.game.player_progress:
-                self.game.player_progress["opened_chests"] = []
-            if chest_id not in self.game.player_progress["opened_chests"]:
-                self.game.player_progress["opened_chests"].append(chest_id)
             
-            # 1. Lưu Checkpoint
-            player.checkpoint_pos = (float(self.rect.x), float(self.rect.y - 20))
-            self.game.player_progress["checkpoint"] = player.checkpoint_pos
-            from game.utils.save import save_game
-            save_game(self.game.player_progress)
-
-            # 2. Lưu vào progress để Menu "Tiếp tục" nhận ra
-            self.game.player_progress["checkpoint"] = player.checkpoint_pos
-
-            # 3. Mở khóa kỹ năng
-            progress = self.game.player_progress
-            if self.unlock_skill:
-                if self.unlock_skill == "double_jump":
-                    progress["double_jump"] = True
-                elif self.unlock_skill not in progress.get("unlocked_skills", []):
-                    progress.setdefault("unlocked_skills", []).append(self.unlock_skill)
-            self.message_timer = self.message_duration
+            # Lấy progress riêng của người chơi (mỗi role có một bảng)
+            progress = player.progress if hasattr(player, 'progress') else self.game.player_progress
             
-            # Thiết lập nội dung thông báo
-            skill_names = {
-                "dash": "LƯỚT (C)",
-                "skill_a": "BẮN CHƯỞNG (A)",
-                "double_jump": "NHẢY KÉP (Z)"
-            }
-            name = skill_names.get(self.unlock_skill, "KỸ NĂNG MỚI")
-            self.unlocked_text = f"ĐÃ MỞ KHÓA: {name}!"
+            if "opened_chests" not in progress:
+                progress["opened_chests"] = []
+            if chest_id not in progress["opened_chests"]:
+                progress["opened_chests"].append(chest_id)
+                
+                # Lưu checkpoint riêng cho player này
+                player.checkpoint_pos = (float(self.rect.x), float(self.rect.y - 20))
+                progress["checkpoint"] = player.checkpoint_pos
+                
+                # Mở khóa kỹ năng cho player này
+                if self.unlock_skill:
+                    if self.unlock_skill == "double_jump":
+                        progress["double_jump"] = True
+                    elif self.unlock_skill not in progress.get("unlocked_skills", []):
+                        progress.setdefault("unlocked_skills", []).append(self.unlock_skill)
+                
+                self.message_timer = self.message_duration
+                skill_names = {
+                    "dash": "LƯỚT (C)",
+                    "skill_a": "BẮN CHƯỞNG (A)",
+                    "double_jump": "NHẢY KÉP (Z)"
+                }
+                name = skill_names.get(self.unlock_skill, "KỸ NĂNG MỚI")
+                self.unlocked_text = f"ĐÃ MỞ KHÓA: {name}!"
+                
+                # Lưu toàn bộ tiến trình game (cả hai người)
+                from game.utils.save import save_game
+                save_game(self.game.player_progress)
 
     def update(self, delta_time, level):
         if self.message_timer > 0:
