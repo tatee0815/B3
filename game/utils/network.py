@@ -10,6 +10,22 @@ class NetworkManager:
         self.client_address = None
         self.host_address = None
         self.connected = False
+        self.local_ip = self.get_local_ip()
+
+    def get_local_ip(self):
+        """Hàm tự động quét và lấy địa chỉ IPv4 LAN của máy hiện tại"""
+        try:
+            # Mở một socket UDP ảo kết nối đến 1 IP public (Google DNS).
+            # Lưu ý: Không có dữ liệu nào thực sự được gửi đi, 
+            # nó chỉ ép hệ điều hành báo xem đang dùng Card mạng (Wifi/LAN) nào để ra ngoài.
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except Exception:
+            # Đề phòng máy hoàn toàn không có kết nối mạng nào
+            return "127.0.0.1"
 
     def close(self):
         """Đóng socket cũ và tạo socket mới, reset trạng thái"""
@@ -30,11 +46,15 @@ class NetworkManager:
             port = 5555
         self.close()  # Đảm bảo socket sạch
         try:
+            # 0.0.0.0 nghĩa là lắng nghe trên MỌI card mạng (Wifi, LAN dây, Localhost)
             self.sock.bind(('0.0.0.0', port))
             self.is_host = True
-            print(f"[Host] Đã mở server trên port {port}")
+            print("="*40)
+            print(f"[Host] Đã mở server thành công trên port {port}")
+            print(f"[Host] BẢO BẠN CỦA BẠN NHẬP IP NÀY VÀO: {self.local_ip}")
+            print("="*40)
         except OSError as e:
-            print(f"[Host] Lỗi bind port {port}: {e}")
+            print(f"[Host] Lỗi mở port {port}: {e}")
             raise
 
     def connect_to_host(self, ip, port=5555):

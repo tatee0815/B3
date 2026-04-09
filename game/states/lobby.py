@@ -222,8 +222,9 @@ class LobbyState:
             if char.isdigit() and len(self.input_text) < 5:
                 self.input_text += char
 
-    def handle_network(self, packet):
-        if packet:
+    def handle_network(self, packets):
+        """packets là một mảng (list) chứa các gói tin gửi về trong frame hiện tại"""
+        for packet in packets:
             if packet.get("type") == "ready_to_load":
                 self.ready_to_start["other"] = True
             elif packet.get("type") == "game_mode":
@@ -349,4 +350,3 @@ class LobbyState:
 
     def on_exit(self):
         sdl2.SDL_StopTextInput()
-        self.game.network.close()   # giải phóng bind

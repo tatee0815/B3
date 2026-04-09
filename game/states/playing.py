@@ -124,49 +124,57 @@ class PlayingState:
                 "entities": entities_data
             })
 
-    def handle_network(self, packet):
-        if not packet:
+    def handle_network(self, packets):
+        if not packets:
             return
-        if packet.get("type") == "game_sync":
-            if self.remote_player:
-                self.remote_player.rect.x = packet["x"]
-                self.remote_player.rect.y = packet["y"]
-                self.remote_player.state = packet["state"]
-                self.remote_player.facing_right = packet["facing"]
-                self.remote_player.hp = packet["hp"]
-                self.remote_player.mana = packet["mana"]
-                self.remote_player.gold = packet["gold"]
-        elif packet.get("type") == "chest_opened":
-            chest_id = packet["chest_id"]
-            for entity in self.level.entities:
-                if hasattr(entity, "rect") and f"{entity.rect.x}_{entity.rect.y}" == chest_id:
-                    entity.opened = True
-                    break
-        elif packet.get("type") == "level_change":
-            new_level = packet["level"]
-            self.game.player_progress["current_level"] = new_level
-            self.is_initialized = False
-            self.on_enter()
-        elif packet.get("type") == "portal_ready":
-            self.remote_at_portal = packet.get("ready", False)
-        elif packet.get("type") == "full_state":
-            self.level.entities.clear()
-            self.level.enemies.clear()
+            
+        for packet in packets:
+            ptype = packet.get("type")
+            
+            if ptype == "game_sync" and self.remote_player:
+                # Cập nhật thông số của người chơi kia
+                self.remote_player.rect.x = packet.get("x", self.remote_player.rect.x)
+                self.remote_player.rect.y = packet.get("y", self.remote_player.rect.y)
+                self.remote_player.state = packet.get("state", "idle")
+                self.remote_player.facing_right = packet.get("facing", True)
+                self.remote_player.hp = packet.get("hp", self.remote_player.hp)
+                if "mana" in packet: self.remote_player.mana = packet["mana"]
+                if "gold" in packet: self.remote_player.gold = packet["gold"]
+                
+            elif ptype == "chest_opened":
+                chest_id = packet["chest_id"]
+                for entity in self.level.entities:
+                    if hasattr(entity, "rect") and f"{entity.rect.x}_{entity.rect.y}" == chest_id:
+                        entity.opened = True
+                        break
+                        
+            elif ptype == "level_change":
+                new_level = packet["level"]
+                self.game.player_progress["current_level"] = new_level
+                self.is_initialized = False
+                self.on_enter()
+                
+            elif ptype == "portal_ready":
+                self.remote_at_portal = packet.get("ready", False)
+                
+            elif ptype == "full_state":
+                # Nhận toàn bộ data bản đồ từ Host lúc mới bắt đầu màn
+                self.level.entities.clear()
+                self.level.enemies.clear()
 
-            for e in packet["entities"]:
-                etype = e["type"]
-                x, y = e["x"], e["y"]
+                for e in packet["entities"]:
+                    etype = e["type"]
+                    x, y = e["x"], e["y"]
 
-                # spawn lại đúng object
-                if etype == "goblin":
-                    from game.entities.enemy import Goblin
-                    enemy = Goblin(self.game, x, y)
-                    self.level.entities.append(enemy)
-                    self.level.enemies.append(enemy)
+                    if etype == "goblin":
+                        from game.entities.enemy import Goblin
+                        enemy = Goblin(self.game, x, y)
+                        self.level.entities.append(enemy)
+                        self.level.enemies.append(enemy)
 
-                elif etype == "coin":
-                    from game.entities.collectible import Coin
-                    self.level.entities.append(Coin(self.game, x, y))
+                    elif etype == "coin":
+                        from game.entities.collectible import Coin
+                        self.level.entities.append(Coin(self.game, x, y))
 
     def update(self, delta_time):
         if not self.player or not self.level:
@@ -212,20 +220,6 @@ class PlayingState:
                     "hp": self.local_player.hp
                 }
                 self.game.network.send_data(sync_data)
-
-            # 2. Nhận tín hiệu từ máy kia về
-            packets = self.game.network.get_packets()
-            for p in packets:
-                if p.get("type") == "game_sync" and self.remote_player:
-                    # Cập nhật tọa độ và animation của đối phương
-                    self.remote_player.rect.x = p.get("x", self.remote_player.rect.x)
-                    self.remote_player.rect.y = p.get("y", self.remote_player.rect.y)
-                    self.remote_player.state = p.get("state", "idle")
-                    self.remote_player.facing_right = p.get("facing", True)
-                    self.remote_player.hp = p.get("hp", self.remote_player.hp)
-                    
-                elif p.get("type") == "portal_ready":
-                    self.remote_at_portal = p.get("ready", False)
 
             # --- SYNC PORTAL ---
             if self.local_at_portal != self.last_local_portal_state:
