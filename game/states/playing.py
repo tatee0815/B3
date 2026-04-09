@@ -32,22 +32,36 @@ class PlayingState:
         self.multi_completed = False
 
         # --- ĐỒNG BỘ LEVEL CHO MULTIPLAYER ---
-        self.local_player = self.game.player
         if self.game.game_mode == "multi":
             from game.entities.player import Player
             from game.entities.princess import Princess
+            
             if self.game.network.is_host:
+                # 1. HOST LÀ MÁY CHỦ -> LUÔN LÀ KNIGHT
+                # Đảm bảo local_player là class Player gốc
+                if not type(self.game.player) is Player:
+                    self.game.player = Player(self.game)
+                self.local_player = self.game.player
+                self.local_player.role = "knight"
+                
+                # Remote player (người chơi bên kia) là Princess
                 self.remote_player = Princess(self.game)
-                self.remote_player.progress = self.game.player_progress["players"]["princess"]
+                
             else:
+                # 2. CLIENT LÀ MÁY KHÁCH -> LUÔN LÀ PRINCESS
+                # Đảm bảo local_player là class Princess với bộ skill riêng
+                if not isinstance(self.game.player, Princess):
+                    self.game.player = Princess(self.game)
+                self.local_player = self.game.player
+                self.local_player.role = "princess"
+                
+                # Remote player (máy chủ) là Knight
                 self.remote_player = Player(self.game)
-                self.remote_player.progress = self.game.player_progress["players"]["knight"]
-            self.remote_player.alive = True
-            # Khởi tạo vị trí tạm (sẽ được cập nhật qua sync)
-            self.remote_player.rect.x = 0
-            self.remote_player.rect.y = 0
-
-            self.level.entities.append(self.remote_player)
+                self.remote_player.role = "knight"
+        else:
+            # Chơi đơn
+            self.local_player = self.game.player
+            self.remote_player = None
 
         # --- BƯỚC 1: NẠP DỮ LIỆU ---
         if not self.is_initialized or force_reset or from_intro:
@@ -185,7 +199,7 @@ class PlayingState:
 
         # ================= MULTIPLAYER =================
         if self.game.game_mode == "multi":
-            # --- SYNC POSITION ---
+            # 1. Gửi tín hiệu của mình đi (Giữ nguyên code send_data của bạn)
             self.sync_timer += delta_time
             if self.sync_timer >= self.SYNC_INTERVAL:
                 self.sync_timer = 0.0
@@ -195,11 +209,23 @@ class PlayingState:
                     "y": self.local_player.rect.y,
                     "state": self.local_player.state,
                     "facing": self.local_player.facing_right,
-                    "hp": self.local_player.hp,
-                    "mana": self.local_player.mana,
-                    "gold": self.local_player.gold
+                    "hp": self.local_player.hp
                 }
                 self.game.network.send_data(sync_data)
+
+            # 2. Nhận tín hiệu từ máy kia về
+            packets = self.game.network.get_packets()
+            for p in packets:
+                if p.get("type") == "game_sync" and self.remote_player:
+                    # Cập nhật tọa độ và animation của đối phương
+                    self.remote_player.rect.x = p.get("x", self.remote_player.rect.x)
+                    self.remote_player.rect.y = p.get("y", self.remote_player.rect.y)
+                    self.remote_player.state = p.get("state", "idle")
+                    self.remote_player.facing_right = p.get("facing", True)
+                    self.remote_player.hp = p.get("hp", self.remote_player.hp)
+                    
+                elif p.get("type") == "portal_ready":
+                    self.remote_at_portal = p.get("ready", False)
 
             # --- SYNC PORTAL ---
             if self.local_at_portal != self.last_local_portal_state:

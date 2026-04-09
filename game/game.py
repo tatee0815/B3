@@ -316,7 +316,7 @@ class Game:
         self.game_time += effective_delta
 
         # --- LẮNG NGHE MẠNG MỖI FRAME ---
-        incoming_data = self.network.update_network()
+        incoming_data = self.network.get_packets()
         if incoming_data and hasattr(self.current_state, "handle_network"):
             self.current_state.handle_network(incoming_data)
 

@@ -54,22 +54,39 @@ class NetworkManager:
         except:
             pass
 
-    def update_network(self):
-        try:
-            data, addr = self.sock.recvfrom(2048)
-            packet = json.loads(data.decode('utf-8'))
-            if packet.get("type") == "handshake":
-                if self.is_host and not self.connected:
-                    self.client_address = addr
-                    self.connected = True
-                    print(f"[Host] Công chúa kết nối từ {addr}")
-                    self.send_data({"type": "handshake_ack"})
-            elif packet.get("type") == "handshake_ack" and not self.is_host:
-                if not self.connected:
-                    self.connected = True
-                    print("[Client] Kết nối thành công")
-            return packet
-        except BlockingIOError:
-            return None
-        except:
-            return None
+    def get_packets(self):
+        """Rút cạn toàn bộ tín hiệu trong buffer mỗi frame để tránh lag/delay"""
+        packets = []
+        while True:
+            try:
+                data, addr = self.sock.recvfrom(2048)
+                packet = json.loads(data.decode('utf-8'))
+                
+                # --- XỬ LÝ KẾT NỐI (HANDSHAKE) ---
+                if packet.get("type") == "handshake":
+                    if self.is_host and not self.connected:
+                        self.client_address = addr
+                        self.connected = True
+                        print(f"[Host] Máy khách (Princess) đã kết nối từ {addr}")
+                        self.send_data({"type": "handshake_ack"})
+                    continue # Đã xử lý nội bộ, không cần trả về cho game state
+
+                elif packet.get("type") == "handshake_ack":
+                    if not self.is_host and not self.connected:
+                        self.connected = True
+                        print("[Client] Đã kết nối thành công tới Host (Knight)!")
+                    continue
+                    
+                # --- ĐƯA GÓI TIN GAME VÀO DANH SÁCH ---
+                packets.append(packet)
+
+            except BlockingIOError:
+                # Không còn tín hiệu nào trong buffer nữa, thoát vòng lặp
+                break 
+            except json.JSONDecodeError:
+                break
+            except Exception as e:
+                # Bỏ qua các lỗi mạng vụn vặt để game không bị crash
+                break
+                
+        return packets
