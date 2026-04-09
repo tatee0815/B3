@@ -21,7 +21,9 @@ class Player(Entity):
         self.mana = progress.get("mana", 50)
         self.mana_warning_timer = 0
         self.mana_warning_duration = 1.0  # Thời gian hiển thị cảnh báo thiếu mana (giây)
-        self.gold = progress.get("coin", 0)
+        # Coin is now a property to share between players
+        if "coin" not in self.game.player_progress:
+            self.game.player_progress["coin"] = 0
         self.gold_milestone = self.gold // 20
         self.invincible_time = 0.0   # Thời gian bất tử (giây)
         self.invincible_duration = 2.0        # Thời gian bất tử sau khi bị đánh (giây)
@@ -350,10 +352,32 @@ class Player(Entity):
             else:
                 self.alive = False # Quái biến mất
 
+    def update_animation(self, delta_time):
+        """Hàm dùng riêng cho Remote Player (Người chơi qua mạng) 
+        để cập nhật hình ảnh chạy/nhảy mà KHÔNG bị dính trọng lực hay va chạm"""
+        self.anim_timer += delta_time
+        
+        current_anim_speed = 0.12
+        if self.state == "skill":
+            current_anim_speed = 0.05
+        elif self.state == "attack":
+            current_anim_speed = 0.08
+
+        if self.anim_timer >= current_anim_speed:
+            self.anim_timer = 0
+            self.anim_frame += 1
+
+    @property
+    def gold(self):
+        return self.game.player_progress.get("coin", 0)
+
+    @gold.setter
+    def gold(self, value):
+        self.game.player_progress["coin"] = value
+
     def add_gold(self, amount):
         """Cộng vàng, kiểm tra mốc để tăng mạng."""
         self.gold += amount
-        self.game.player_progress["coin"] = self.gold
 
         new_milestone = self.gold // 20
         if new_milestone > self.gold_milestone:
@@ -462,7 +486,11 @@ class Player(Entity):
         # Tính toán vị trí vẽ
         draw_x = int(self.rect.x - camera.x)
         draw_y = int(self.rect.y - camera.y)
-        render_w, render_h = 48, 48
+        
+        # Đọc linh động theo cấu hình (mặc định 48 nếu không có)
+        config = AssetManager.ANIM_CONFIG.get(self.state, {})
+        render_w = config.get("frame_w", 48)
+        render_h = config.get("frame_h", 48)
         dst_x = draw_x - (render_w - self.rect.w) // 2
         dst_y = draw_y - (render_h - self.rect.h) -2
         

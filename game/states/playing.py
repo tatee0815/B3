@@ -47,6 +47,9 @@ class PlayingState:
                 # Remote player (người chơi bên kia) là Princess
                 self.remote_player = Princess(self.game)
                 
+                self.remote_player.is_remote = True
+                self.remote_player.target_x = float(self.remote_player.rect.x)
+                self.remote_player.target_y = float(self.remote_player.rect.y)
             else:
                 # 2. CLIENT LÀ MÁY KHÁCH -> LUÔN LÀ PRINCESS
                 # Đảm bảo local_player là class Princess với bộ skill riêng
@@ -70,8 +73,8 @@ class PlayingState:
 
             level_name = self.game.player_progress["current_level"]
             if self.level.load_from_json(level_name):
-                if self.game.game_mode == "single" or self.game.network.is_host:
-                    self.level.spawn_all_entities(self.game)
+                # Always spawn entities so both host and client have the map populated
+                self.level.spawn_all_entities(self.game)
                 self.is_initialized = True
                 just_loaded_map = True
 
@@ -133,13 +136,27 @@ class PlayingState:
             
             if ptype == "game_sync" and self.remote_player:
                 # Cập nhật thông số của người chơi kia
-                self.remote_player.rect.x = packet.get("x", self.remote_player.rect.x)
-                self.remote_player.rect.y = packet.get("y", self.remote_player.rect.y)
+                self.remote_player.target_x = float(packet.get("x", self.remote_player.rect.x))
+                self.remote_player.target_y = float(packet.get("y", self.remote_player.rect.y))
                 self.remote_player.state = packet.get("state", "idle")
                 self.remote_player.facing_right = packet.get("facing", True)
                 self.remote_player.hp = packet.get("hp", self.remote_player.hp)
-                if "mana" in packet: self.remote_player.mana = packet["mana"]
-                if "gold" in packet: self.remote_player.gold = packet["gold"]
+                
+                # Cập nhật vị trí quái vật từ Host
+                if not self.game.network.is_host and "enemies" in packet:
+                    for edata in packet["enemies"]:
+                        idx = edata.get("i")
+                        if idx is not None and idx < len(self.level.enemies):
+                            e = self.level.enemies[idx]
+                            e.rect.x = edata["x"]
+                            e.rect.y = edata["y"]
+                            e.pos_x = float(e.rect.x)
+                            e.pos_y = float(e.rect.y)
+                            e.alive = edata["a"]
+                            if hasattr(e, "direction"):
+                                e.direction = edata.get("d", e.direction)
+                            if hasattr(e, "hp"):
+                                e.hp = edata.get("hp", e.hp)
                 
             elif ptype == "chest_opened":
                 chest_id = packet["chest_id"]
@@ -156,58 +173,52 @@ class PlayingState:
                 
             elif ptype == "portal_ready":
                 self.remote_at_portal = packet.get("ready", False)
-                
-            elif ptype == "full_state":
-                # Nhận toàn bộ data bản đồ từ Host lúc mới bắt đầu màn
-                self.level.entities.clear()
-                self.level.enemies.clear()
-
-                for e in packet["entities"]:
-                    etype = e["type"]
-                    x, y = e["x"], e["y"]
-
-                    if etype == "goblin":
-                        from game.entities.enemy import Goblin
-                        enemy = Goblin(self.game, x, y)
-                        self.level.entities.append(enemy)
-                        self.level.enemies.append(enemy)
-
-                    elif etype == "coin":
-                        from game.entities.collectible import Coin
-                        self.level.entities.append(Coin(self.game, x, y))
 
     def update(self, delta_time):
         if not self.player or not self.level:
             return
 
-        for entity in self.level.entities:
-            if isinstance(entity, EndPortal):
-                if self.local_player and sdl2.SDL_HasIntersection(self.local_player.rect, entity.rect):
-                    self.local_at_portal = True
-                    break
+        # 1. Reset cờ portal đầu mỗi frame (để tránh bị kẹt trạng thái)
+        self.local_at_portal = False
 
+        # 2. Cập nhật bản thân (Local) và Level
         self.level.update(delta_time)
         self.level.update_entities(delta_time)
         self.player.update(delta_time, self.level)
 
-        self.local_at_portal = False
+        # --- 3. LÀM MƯỢT DI CHUYỂN CỦA REMOTE PLAYER (NỘI SUY - LERP) ---
+        if self.remote_player and hasattr(self.remote_player, 'target_x'):
+            # Di chuyển mượt 30% quãng đường mỗi khung hình
+            self.remote_player.pos_x += (self.remote_player.target_x - self.remote_player.pos_x) * 0.3
+            self.remote_player.pos_y += (self.remote_player.target_y - self.remote_player.pos_y) * 0.3
+            
+            # Khóa tọa độ về số nguyên để render chuẩn
+            self.remote_player.rect.x = int(self.remote_player.pos_x)
+            self.remote_player.rect.y = int(self.remote_player.pos_y)
+            
+            # Cập nhật frame hoạt ảnh cho Remote Player
+            if hasattr(self.remote_player, 'update_animation'):
+                self.remote_player.update_animation(delta_time)
 
+        # 4. Kiểm tra va chạm với Portal (Gom lại thành 1 vòng lặp duy nhất)
+        from game.objects.portal import EndPortal
         for entity in self.level.entities:
             if isinstance(entity, EndPortal):
                 if sdl2.SDL_HasIntersection(self.player.rect, entity.rect):
                     self.local_at_portal = True
-                    print("🔥 PLAYER TOUCHING PORTAL")
                     break
 
-        # ================= SINGLE MODE =================
+        # ================= KIỂM TRA ĐIỀU KIỆN QUA MÀN =================
         if self.game.game_mode == "single":
-            if self.local_at_portal:
-                print("✅ LEVEL COMPLETE (SINGLE)")
-                self.level.is_completed = True
+            # Chơi đơn: Qua màn nếu chạm Portal HOẶC hoàn thành nhiệm vụ (Princess)
+            if self.local_at_portal or self.level.check_win(self.player):
+                self.complete_level_single()
 
-        # ================= MULTIPLAYER =================
-        if self.game.game_mode == "multi":
-            # 1. Gửi tín hiệu của mình đi (Giữ nguyên code send_data của bạn)
+        elif self.game.game_mode == "multi":
+            packets = self.game.network.get_packets()
+            if packets:
+                self.handle_network(packets)
+            # --- GỬI TÍN HIỆU ĐỒNG BỘ ĐỊNH KỲ ---
             self.sync_timer += delta_time
             if self.sync_timer >= self.SYNC_INTERVAL:
                 self.sync_timer = 0.0
@@ -219,9 +230,24 @@ class PlayingState:
                     "facing": self.local_player.facing_right,
                     "hp": self.local_player.hp
                 }
+                
+                # Nếu là Host, gửi thêm dữ liệu quái vật để Client đồng bộ chính xác
+                if self.game.network.is_host:
+                    enemies_sync = []
+                    for i, e in enumerate(self.level.enemies):
+                        enemies_sync.append({
+                            "i": i,
+                            "x": e.rect.x,
+                            "y": e.rect.y,
+                            "a": e.alive,
+                            "d": getattr(e, "direction", 1),
+                            "hp": getattr(e, "hp", 0)
+                        })
+                    sync_data["enemies"] = enemies_sync
+
                 self.game.network.send_data(sync_data)
 
-            # --- SYNC PORTAL ---
+            # --- ĐỒNG BỘ TRẠNG THÁI PORTAL ---
             if self.local_at_portal != self.last_local_portal_state:
                 self.last_local_portal_state = self.local_at_portal
                 self.game.network.send_data({
@@ -229,49 +255,51 @@ class PlayingState:
                     "ready": self.local_at_portal
                 })
 
-            # --- CHECK WIN ---
+            # --- CHECK WIN MULTIPLAYER (Đợi cả 2 cùng vào portal) ---
             if not self.multi_completed and self.local_at_portal and self.remote_at_portal:
                 print("✅ BOTH PLAYERS AT PORTAL")
                 self.multi_completed = True
                 self.complete_level_multi()
 
-        elif self.level.check_win(self.player):
-            self.complete_level_single()
-
-        # Xử lý va chạm platform
+        # ================= VẬT LÝ VÀ VA CHẠM =================
+        
+        # 1. Xử lý va chạm platform
         if hasattr(self.level, 'platforms'):
             for plat in self.level.platforms:
                 if hasattr(plat, 'resolve_collision'):
                     plat.resolve_collision(self.player, delta_time)
 
-        # Va chạm player - enemy
+        # 2. Va chạm Player - Enemy
         for enemy in self.level.enemies[:]:
             if enemy.alive and sdl2.SDL_HasIntersection(self.player.rect, enemy.rect):
                 knock_dir = -1 if self.player.rect.x < enemy.rect.x else 1
                 self.player.take_damage(enemy.damage, knock_dir)
+                
+                # Logic đẩy người chơi ra khỏi quái để tránh bị dính chặt
                 if sdl2.SDL_HasIntersection(self.player.rect, enemy.rect):
-                    player_left = self.player.rect.x
-                    player_right = self.player.rect.x + self.player.rect.w
-                    player_center_x = self.player.rect.x + self.player.rect.w // 2
-                    enemy_left = enemy.rect.x
-                    enemy_right = enemy.rect.x + enemy.rect.w
-                    enemy_center_x = enemy.rect.x + enemy.rect.w // 2
+                    player_left, player_right = self.player.rect.x, self.player.rect.x + self.player.rect.w
+                    player_center_x = player_left + self.player.rect.w // 2
+                    
+                    enemy_left, enemy_right = enemy.rect.x, enemy.rect.x + enemy.rect.w
+                    enemy_center_x = enemy_left + enemy.rect.w // 2
+                    
                     if player_center_x < enemy_center_x:
-                        overlap = player_right - enemy_left
-                        self.player.rect.x -= overlap
+                        self.player.rect.x -= (player_right - enemy_left)
                     else:
-                        overlap = enemy_right - player_left
-                        self.player.rect.x += overlap
+                        self.player.rect.x += (enemy_right - player_left)
+                        
                     self.player.pos_x = float(self.player.rect.x)
+                    
                     if (self.player.facing_right and player_center_x < enemy_center_x) or \
                        (not self.player.facing_right and player_center_x > enemy_center_x):
                         self.player.vel_x = 0
 
-        # Camera
+        # 3. Cập nhật Camera đi theo người chơi Local
         if hasattr(self.game, 'camera'):
             self.game.camera.update(self.player)
 
-        # Projectile va chạm enemy
+        # 4. Va chạm Projectile (Đạn/Kỹ năng) với Enemy
+        from game.entities.projectile import Projectile
         projectiles = [e for e in self.level.entities if isinstance(e, Projectile)]
         for proj in projectiles[:]:
             if not proj.alive:
@@ -279,7 +307,7 @@ class PlayingState:
             for enemy in self.level.enemies:
                 if enemy.alive and sdl2.SDL_HasIntersection(proj.rect, enemy.rect):
                     enemy.take_damage(proj.damage)
-                    enemy.vel_x = proj.direction * 5.0
+                    enemy.vel_x = proj.direction * 5.0 # Đẩy lùi quái nhẹ
                     proj.die()
                     break
 
@@ -303,10 +331,8 @@ class PlayingState:
 
     def complete_level_multi(self):
         current_lv = self.game.player_progress.get("current_level", "level1_village")
-        # Lưu tiến trình cho cả hai người (thực tế chỉ cần lưu của host, client sẽ nhận level_change)
-        self.game.player_progress["players"]["knight"]["coin"] = self.local_player.gold if self.game.network.is_host else self.remote_player.gold
-        self.game.player_progress["players"]["princess"]["coin"] = self.remote_player.gold if self.game.network.is_host else self.local_player.gold
-        # (tương tự có thể lưu lives, hp, mana... nhưng tạm bỏ qua)
+        # Lưu tiến trình: Dùng chung coin
+        self.game.player_progress["coin"] = self.game.player_progress.get("coin", 0)
         self.game.player_progress["checkpoint"] = None
 
         if current_lv == "level1_village":

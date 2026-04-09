@@ -176,8 +176,18 @@ class Princess(Player):
         if "double_jump" in self.game.player_progress.get("unlocked_skills", []):
             self.has_double_jump = True
 
+    def _update_state(self):
+        if self.is_attacking or getattr(self, "is_using_skill", False):
+            self.state = "princess_special"
+        elif self.is_dashing:
+            self.state = "princess_protection"
+        elif not self.on_ground or abs(self.vel_x) > 0.1:
+            self.state = "princess_walk"
+        else:
+            self.state = "princess_idle"
+
     def render(self, renderer, camera):
-        # Có thể ghi đè để vẽ sprite công chúa nếu có
-        # Tạm thời dùng sprite của player nhưng đổi màu hoặc dùng texture riêng
-        # Ở đây gọi super để dùng chung sprite (có thể thay sau)
+        # We need to call super().render() so it handles the base rendering
+        # BUT because Player.render currently hardcodes render_w=48, render_h=48,
+        # we will let Player.render dynamically check AssetManager.ANIM_CONFIG
         super().render(renderer, camera)

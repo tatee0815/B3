@@ -281,6 +281,8 @@ class Level:
     
     def spawn_all_entities(self, game):
         """Khởi tạo tất cả thực thể từ dữ liệu JSON"""
+        # --- Đảm bảo Host và Client có chung 1 chuỗi random ---
+        random.seed(self.name)
         self.is_completed = False # Reset cờ mỗi khi load map
         self.entities.clear()
         self.enemies.clear() # Xóa danh sách quái cũ
@@ -397,6 +399,9 @@ class Level:
                 self.entities.append(gate)
         
         self.spawn_random_collectibles(count=10, types=[Coin, ManaBottle])
+        
+        # --- Trả lại random tự do cho các xử lý khác sau này ---
+        random.seed()
     
     def spawn_enemy(self, enemy_type: str, x: int, y: int):
         """

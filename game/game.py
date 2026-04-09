@@ -418,6 +418,9 @@ class Game:
                 delta_ms = 1000 // FPS_TARGET
 
             delta_time = delta_ms / 1000.0
+            # Giới hạn delta_time để tránh rớt khung hình (tunneling) khi load trạng thái mới
+            if delta_time > 0.1:
+                delta_time = 0.1
 
             self.handle_events()
             self.update(delta_time)
