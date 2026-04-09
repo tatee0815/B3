@@ -1,6 +1,6 @@
-# game/utils/network.py
 import socket
 import json
+import time
 
 class NetworkManager:
     def __init__(self):
@@ -12,6 +12,8 @@ class NetworkManager:
         self.connected = False
         # Tự động lấy IP Local khi khởi tạo mạng
         self.local_ip = self.get_local_ip()
+        self.last_packet_time = time.time()
+        self.handshake_received = False
 
     def get_local_ip(self):
         """Hàm tự động quét và lấy địa chỉ IPv4 LAN của máy hiện tại"""
@@ -103,15 +105,17 @@ class NetworkManager:
         packets = []
         while True:
             try:
-                data, addr = self.sock.recvfrom(2048)
+                data, addr = self.sock.recvfrom(65536)
+                self.last_packet_time = time.time() 
                 packet = json.loads(data.decode('utf-8'))
                 
                 # --- XỬ LÝ KẾT NỐI (HANDSHAKE) ---
                 if packet.get("type") == "handshake":
-                    if self.is_host and not self.connected:
+                    if self.is_host:
                         self.client_address = addr
                         self.connected = True
-                        print(f"[Host] Công Chúa đã kết nối từ {addr}")
+                        self.handshake_received = True
+                        print(f"[Host] Người chơi (Re)Connect từ {addr}")
                         self.send_data({"type": "handshake_ack"})
                     continue 
 

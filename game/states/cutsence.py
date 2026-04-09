@@ -18,6 +18,10 @@ class CutsceneState:
         self.fade_duration = 2.5         
         self.target_alpha = 100          
         
+        self.local_ready = False
+        self.remote_ready = False
+        self.sync_timer = 0.0
+
         self._setup_content()
         self._load_background()
 
@@ -42,6 +46,9 @@ class CutsceneState:
     def on_enter(self, **kwargs):
         self.timer = 0.0
         self.bg_alpha = 255
+        self.local_ready = False
+        self.remote_ready = False
+        self.sync_timer = 0.0
         
     def _load_background(self):
         renderer = self.game.renderer
@@ -72,18 +79,51 @@ class CutsceneState:
     def handle_event(self, event):  
         if event.type == sdl2.SDL_KEYDOWN:
             if event.key.keysym.scancode in (sdl2.SDL_SCANCODE_X, sdl2.SDL_SCANCODE_RETURN):
+                self._set_local_ready()
+
+    def _set_local_ready(self):
+        if not self.local_ready:
+            self.local_ready = True
+            if hasattr(self.game, "game_mode") and self.game.game_mode == "multi":
+                self.game.network.send_data({"type": "intro_ready", "ready": True})
+            else:
                 self.game.change_state(self.next_state, from_intro=True)
 
+    def handle_network(self, packets):
+        if not (hasattr(self.game, "game_mode") and self.game.game_mode == "multi"):
+            return
+        for packet in packets:
+            ptype = packet.get("type")
+            if ptype == "intro_ready":
+                self.remote_ready = packet.get("ready", False)
+            elif ptype == "game_sync":
+                # Đối phương đã vào game rồi, bắt buộc mình cũng phải vào ngay!
+                self.remote_ready = True
+                self.local_ready = True
+
     def update(self, delta_time):
-        state = sdl2.SDL_GetKeyboardState(None)
-        self.timer += delta_time * 10 if state[sdl2.SDL_SCANCODE_Z] else delta_time
+        if hasattr(self.game, "game_mode") and self.game.game_mode == "multi":
+            if self.local_ready:
+                self.sync_timer += delta_time
+                if self.sync_timer > 0.3:
+                    self.sync_timer = 0.0
+                    self.game.network.send_data({"type": "intro_ready", "ready": True})
 
-        if self.timer >= self.fade_start_time:
-            fade_progress = min(1.0, (self.timer - self.fade_start_time) / self.fade_duration)
-            self.bg_alpha = int(255 - (255 - self.target_alpha) * fade_progress)
+            if self.local_ready and self.remote_ready:
+                self.remote_ready = False # Tránh gọi liên tục
+                self.game.change_state(self.next_state, from_intro=True)
+                return
 
-        if self.timer >= self.duration:
-            self.game.change_state(self.next_state, from_intro=True)
+        if not self.local_ready:
+            state = sdl2.SDL_GetKeyboardState(None)
+            self.timer += delta_time * 10 if state[sdl2.SDL_SCANCODE_Z] else delta_time
+
+            if self.timer >= self.fade_start_time:
+                fade_progress = min(1.0, (self.timer - self.fade_start_time) / self.fade_duration)
+                self.bg_alpha = int(255 - (255 - self.target_alpha) * fade_progress)
+
+            if self.timer >= self.duration:
+                self._set_local_ready()
 
     def _draw_big_text(self, renderer, text, x, y, color=(255, 255, 255), scale=1.5):
         if not text or not hasattr(self.game, 'font'): return
@@ -121,4 +161,7 @@ class CutsceneState:
             if -100 < line_y < SCREEN_HEIGHT + 100:
                 self._draw_big_text(renderer, line, 0, line_y, (255, 255, 255), scale=1.2)
 
-        self._draw_big_text(renderer, "Giữ [Z]: Đọc nhanh hơn | [X]: Bỏ qua", 0, SCREEN_HEIGHT - 70, (180, 180, 180), scale=1.0)
+        if self.local_ready and hasattr(self.game, "game_mode") and self.game.game_mode == "multi":
+            self._draw_big_text(renderer, "Đang chờ người chơi kia...", 0, SCREEN_HEIGHT - 35, (0, 255, 0), scale=1.0)
+        else:
+            self._draw_big_text(renderer, "Giữ [Z]: Đọc nhanh hơn | [X]: Bỏ qua", 0, SCREEN_HEIGHT - 70, (180, 180, 180), scale=1.0)

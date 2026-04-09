@@ -18,7 +18,7 @@ FPS_FRAME_TIME_MS     = 1000 // FPS_TARGET   # ~16ms
 # -------------------------------
 GRAVITY               = 0.65          # gia tốc rơi (pixel/frame²)
 MAX_FALL_SPEED        = 12.0
-PLAYER_SPEED          = 3.8           # pixel/frame khi chạy
+PLAYER_SPEED          = 5.0           # pixel/frame khi chạy
 PLAYER_ACCELERATION   = 0.8
 PLAYER_DECELERATION   = 0.7
 

@@ -10,11 +10,19 @@ from .projectile import Projectile
 
 class Player(Entity):
     def __init__(self, game):
-        # Khởi tạo tại tọa độ mặc định, kích thước nhân vật 24x48
-        super().__init__(game, x=100, y=400, w=24, h=48)
+        # Khởi tạo tại tọa độ mặc định, kích thước nhân vật 36x60
+        super().__init__(game, x=-1000, y=-1000, w=36, h=60)
         self.z_index = 4
-        progress = self.game.player_progress
+        self.is_visible = True
         self.role = "knight"
+        
+        # 1. Xác định progress của người chơi theo role (Multiplayer support)
+        if "players" in self.game.player_progress:
+            self.progress = self.game.player_progress["players"][self.role]
+        else:
+            self.progress = self.game.player_progress # Fallback cho single player cũ
+        
+        progress = self.progress
         
         # Chỉ số cơ bản
         self.hp = progress.get("hp", PLAYER_MAX_HP)
@@ -37,7 +45,7 @@ class Player(Entity):
         self.can_dash_in_air = True # Cho phép dash trên không nếu đã nhảy
         
         # Trạng thái kỹ năng
-        self.has_double_jump = game.player_progress.get("double_jump", False)
+        self.has_double_jump = self.progress.get("double_jump", False)
         self.can_double_jump = self.has_double_jump
         self.jumped_once = False
         
@@ -56,11 +64,13 @@ class Player(Entity):
         self.attack_cooldown_timer = 0
         self.ATTACK_COOLDOWN = 0.4
         self.attack_rect = sdl2.SDL_Rect(0, 0, 0, 0)
+        self.mele_anim_frame = 0
 
         self.recoil_timer = 0
         self.recoil_force = 5 # Độ mạnh của lực bật lùi
         
         self.is_respawning = False
+        self.is_using_skill = False
         self.state = "idle"
 
         self.speech_text = ""
@@ -68,14 +78,17 @@ class Player(Entity):
 
         if "playing" in self.game.states:
             level_spawn = self.game.states["playing"].level.get_spawn_position()
-            self.checkpoint_pos = level_spawn
+            # Chỉ lấy spawn của level nếu trong progress chưa có checkpoint
+            if not self.checkpoint_pos:
+                self.checkpoint_pos = level_spawn
 
         AssetManager.load_all_player_sprites(game.renderer)
         self.anim_frame = 0
         self.anim_timer = 0
         self.anim_speed = 0.1 # Tốc độ chuyển frame (giây)
 
-        self.debug_mode = False # Đổi thành False để ẩn khung đỏ khi xong
+        self.debug_mode = True # Bật lại khung đỏ hitbox theo yêu cầu
+        self.is_god_mode = False
 
     def handle_input(self, event):
         """Xử lý phím dựa trên KEY_BINDINGS_DEFAULT"""
@@ -99,7 +112,9 @@ class Player(Entity):
             elif scancode == KEY_BINDINGS_DEFAULT["dash"]:
                 self.dash()
             elif scancode == KEY_BINDINGS_DEFAULT["attack"]:
-                self.melee_attack()
+                if not getattr(self, "is_attack_key_down", False):
+                    self.is_attack_key_down = True
+                    self.melee_attack()
             elif scancode == KEY_BINDINGS_DEFAULT["skill"]:
                 self.use_skill()
             elif scancode == KEY_BINDINGS_DEFAULT["interact"]:
@@ -110,19 +125,21 @@ class Player(Entity):
                 self.moving_left = False
             elif scancode == KEY_BINDINGS_DEFAULT["right"]:
                 self.moving_right = False
+            elif scancode == KEY_BINDINGS_DEFAULT["attack"]:
+                self.is_attack_key_down = False
 
     def jump(self):
         if self.on_ground:
             self.vel_y = JUMP_FORCE # Hoặc JUMP_FORCE của fen
             self.on_ground = False # Nhảy lên thì không còn trên đất
             self.jumped_once = True # Đánh dấu đã nhảy một lần
-        elif self.game.player_progress.get("double_jump", False) and self.jumped_once:
+        elif self.progress.get("double_jump", False) and self.jumped_once:
             self.vel_y = DOUBLE_JUMP_FORCE
             self.jumped_once = False # Reset để không thể nhảy lần thứ 3
 
     def dash(self):
         # Kiểm tra xem đã mở khóa Dash chưa
-        if "dash" not in self.game.player_progress.get("unlocked_skills", []):
+        if "dash" not in self.progress.get("unlocked_skills", []):
             return
         
         if self.dash_cooldown <= 0 and (self.on_ground or self.can_dash_in_air):
@@ -141,6 +158,7 @@ class Player(Entity):
             self.attack_cooldown_timer = self.ATTACK_COOLDOWN
             self.state = "attack"
             self.hit_enemies = []
+            self.anim_frame = 0 # Bắt đầu animation đánh từ frame 0
 
     def _update_attack_hitbox(self):
         """Tính toán vị trí hitbox và cập nhật frame cho hiệu ứng chém"""
@@ -168,12 +186,68 @@ class Player(Entity):
         self.recoil_timer = 0.15 
         direction = -1 if self.facing_right else 1
         self.vel_x = direction * self.recoil_force 
+
+    def update_attack_collisions(self, level):
+        """
+        Logic quét va chạm và gây sát thương. 
+        Được tách ra để Host có thể gọi cho cả Remote Player.
+        """
+        if not self.is_attacking or not level:
+            return
+
+        self._update_attack_hitbox()
+        
+        # Khởi tạo danh sách nếu chưa có
+        if not hasattr(self, 'hit_enemies'): self.hit_enemies = []
+        
+        for i, enemy in enumerate(level.enemies):
+            # CHỈ GÂY SÁT THƯƠNG NẾU QUÁI CHƯA BỊ TRÚNG ĐÒN TRONG LƯỢT NÀY
+            if enemy.alive and enemy not in self.hit_enemies:
+                if sdl2.SDL_HasIntersection(self.attack_rect, enemy.rect):
+                    k_dir = 1 if self.facing_right else -1
+                    enemy.take_damage(self.attack_damage, knockback_dir=k_dir)
+                    self.hit_enemies.append(enemy) # Đánh dấu đã chém trúng
+                    
+                    # GỬI TÍN HIỆU VỀ HOST NẾU LÀ CLIENT
+                    if self.game.game_mode == "multi" and not self.game.network.is_host:
+                        self.game.network.send_data({
+                            "type": "hit_enemy",
+                            "enemy_idx": i,
+                            "damage": self.attack_damage,
+                            "k_dir": k_dir
+                        })
+
+                    self.apply_recoil()
+                    if not self.on_ground:
+                        self.can_dash_in_air = True
+        
+    def update_animation(self, delta_time):
+        """Cập nhật animation frame và timer chém cho cả local và remote player"""
+        # 1. Cập nhật frame hoạt ảnh chính của sprite
+        self.anim_timer += delta_time
+        current_anim_speed = 0.12 
+        if self.state in ["skill", "princess_protection"]:
+            current_anim_speed = 0.05
+        elif self.state == "attack":
+            current_anim_speed = 0.08
+
+        if self.anim_timer >= current_anim_speed:
+            self.anim_timer = 0
+            self.anim_frame += 1
+            
+        # 2. Cập nhật đếm ngược cho đòn tấn công (để hiện tia chém Slash)
+        if self.is_attacking:
+            self.attack_timer -= delta_time
+            if self.attack_timer <= 0:
+                self.is_attacking = False
+            else:
+                self._update_attack_hitbox()
         
         if not self.on_ground:
             self.can_dash_in_air = True
 
     def use_skill(self):
-        if "skill_a" not in self.game.player_progress.get("unlocked_skills", []):
+        if "skill_a" not in self.progress.get("unlocked_skills", []):
             return
         
         if self.mana >= SKILL_A_COST:
@@ -196,6 +270,15 @@ class Player(Entity):
         center_y = self.rect.y + (self.rect.h // 2)
         proj = Projectile(self.game, proj_x, center_y - 8, direction)
         self.game.states["playing"].level.entities.append(proj)
+        
+        # GỬI LỆNH QUA MẠNG
+        if self.game.game_mode == "multi":
+            self.game.network.send_data({
+                "type": "spawn_projectile",
+                "x": proj_x,
+                "y": center_y - 8,
+                "dir": direction
+            })
 
     def interact(self):
         entities = self.game.states["playing"].level.entities
@@ -216,41 +299,25 @@ class Player(Entity):
         if self.mana_warning_timer > 0: self.mana_warning_timer -= delta_time
         if self.invincible_time > 0: self.invincible_time -= delta_time
         if self.speech_timer > 0: self.speech_timer -= delta_time
-        # Tính toán animation frame
-        self.anim_timer += delta_time
-        
-        current_anim_speed = 0.12  # Tốc độ mặc định cho Idle/Run
-        if self.state == "skill":
-            current_anim_speed = 0.05 # Số càng nhỏ hoạt ảnh chạy càng nhanh
-        elif self.state == "attack":
-            current_anim_speed = 0.08 # Tốc độ chém thường
+        # --- 2. LOGIC HOẠT ẢNH ---
+        self.update_animation(delta_time)
 
-        if self.anim_timer >= current_anim_speed:
-            self.anim_timer = 0
-            self.anim_frame += 1
-        # --- 2. LOGIC TẤN CÔNG (ACTIVE FRAMES) ---
+        # --- 3. LOGIC TẤN CÔNG (ACTIVE FRAMES) ---
         if self.is_attacking:
-            self.attack_timer -= delta_time
-            if self.attack_timer <= 0:
-                self.is_attacking = False
-                # Reset danh sách khi kết thúc đòn đánh
-                if hasattr(self, 'hit_enemies'): self.hit_enemies = []
-            else:
-                self._update_attack_hitbox()
-                if level:
-                    # Khởi tạo danh sách nếu chưa có
-                    if not hasattr(self, 'hit_enemies'): self.hit_enemies = []
-                    for enemy in level.enemies:
-                        # CHỈ GÂY SÁT THƯƠNG NẾU QUÁI CHƯA BỊ TRÚNG ĐÒN TRONG LƯỢT NÀY
-                        if enemy.alive and enemy not in self.hit_enemies:
-                            if sdl2.SDL_HasIntersection(self.attack_rect, enemy.rect):
-                                k_dir = 1 if self.facing_right else -1
-                                enemy.take_damage(self.attack_damage, knockback_dir=k_dir)
-                                self.hit_enemies.append(enemy) # Đánh dấu đã chém trúng
-                                
-                                self.apply_recoil()
-                                if not self.on_ground:
-                                    self.can_dash_in_air = True
+            # Nếu là remote player đang tấn công, cần cập nhật frame hiệu ứng chém
+            # (Thực hiện trong update_animation để đồng bộ hình ảnh)
+            pass 
+
+        if self.attack_timer <= 0:
+            self.is_attacking = False
+            self.is_using_skill = False
+            # Reset danh sách khi kết thúc đòn đánh
+            if hasattr(self, 'hit_enemies'): self.hit_enemies = []
+        else:
+            # Chỉ Local Player tự chạy logic va chạm trong update
+            # Remote Player sẽ được Host gọi thông qua PlayingState
+            if not getattr(self, "is_remote", False):
+                self.update_attack_collisions(level)
 
         # Hồi lượt dash khi chân chạm đất
         if self.on_ground:
@@ -352,21 +419,6 @@ class Player(Entity):
             else:
                 self.alive = False # Quái biến mất
 
-    def update_animation(self, delta_time):
-        """Hàm dùng riêng cho Remote Player (Người chơi qua mạng) 
-        để cập nhật hình ảnh chạy/nhảy mà KHÔNG bị dính trọng lực hay va chạm"""
-        self.anim_timer += delta_time
-        
-        current_anim_speed = 0.12
-        if self.state == "skill":
-            current_anim_speed = 0.05
-        elif self.state == "attack":
-            current_anim_speed = 0.08
-
-        if self.anim_timer >= current_anim_speed:
-            self.anim_timer = 0
-            self.anim_frame += 1
-
     @property
     def gold(self):
         return self.game.player_progress.get("coin", 0)
@@ -391,8 +443,10 @@ class Player(Entity):
                 self.show_speech(f"+{extra} Mạng!", 2.0)
 
     def take_damage(self, amount, knockback_dir=1):
+        if self.is_god_mode: # Chống bị trừ máu
+            return
         """Player bị quái đánh - đã tích hợp invincible + knockback"""
-        if self.is_respawning or self.invincible_time > 0 or self.debug_mode :
+        if self.is_respawning or self.invincible_time > 0:
             return  # Không nhận sát thương khi đang hồi sinh hoặc bất tử
         self.hp -= amount
         print(f"Player take damage! HP còn: {self.hp}")
@@ -424,14 +478,14 @@ class Player(Entity):
             if "playing" in self.game.states:
                 spawn_pos = self.game.states["playing"].level.get_spawn_position()
             else:
-                spawn_pos = (100, 400)
+                spawn_pos = (-1000, -1000)
         self.respawn(spawn_pos)
         self.hp = PLAYER_MAX_HP
         self.is_respawning = False
 
     def _update_state(self):
         if self.is_attacking: 
-            if self.state not in ["attack", "skill"]:
+            if self.state not in ["attack", "skill", "princess_protection"]:
                 self.state = "attack"
             return
         elif self.is_dashing: self.state = "dash"
@@ -475,24 +529,31 @@ class Player(Entity):
             self.game.camera.reset()
 
     def render(self, renderer, camera):
+        if hasattr(self, 'is_visible') and not self.is_visible:
+            return
+            
         # 1. Hiệu ứng nhấp nháy khi bất tử (Giữ nguyên logic cũ)
-        if self.invincible_time > 0:
+        if hasattr(self, 'invincible_time') and self.invincible_time > 0:
             if (sdl2.timer.SDL_GetTicks() // 100) % 2 == 0:
                 return 
         
         # --- PHẦN VẼ NHÂN VẬT TỪ SPRITE SHEET ---
-        texture, srcrect = AssetManager.get_anim_info(self.state, self.anim_frame)
+        anim_key = self.state
+        # Tự động chuyển sang bộ animation 2 cho Princess (idle2, run2,...)
+        if self.role == "princess" and (anim_key + "2") in AssetManager.ANIM_CONFIG:
+            anim_key += "2"
+            
+        texture, srcrect = AssetManager.get_anim_info(anim_key, self.anim_frame)
 
         # Tính toán vị trí vẽ
         draw_x = int(self.rect.x - camera.x)
         draw_y = int(self.rect.y - camera.y)
         
-        # Đọc linh động theo cấu hình (mặc định 48 nếu không có)
-        config = AssetManager.ANIM_CONFIG.get(self.state, {})
-        render_w = config.get("frame_w", 48)
-        render_h = config.get("frame_h", 48)
+        # Vẽ kích thước 128x128 theo yêu cầu (Sprite gốc)
+        render_w = 96
+        render_h = 96
         dst_x = draw_x - (render_w - self.rect.w) // 2
-        dst_y = draw_y - (render_h - self.rect.h) -2
+        dst_y = draw_y - (render_h - self.rect.h)
         
         # Vì bộ Biker là 48x48, ta có thể vẽ to hơn hoặc giữ nguyên
         dstrect = sdl2.SDL_Rect(dst_x, dst_y, render_w, render_h)
@@ -505,10 +566,15 @@ class Player(Entity):
         
         # Vẽ hiệu ứng attack
         if self.is_attacking and not getattr(self, "is_using_skill", False):
-            # Lấy thông tin animation cho 'mele' từ AssetManager
+            # Hiển thị hiệu ứng chém Melee
             mele_tex, mele_srcrect = AssetManager.get_anim_info("mele", self.mele_anim_frame)
-            
             if mele_tex:
+                # Đổi màu tia chém theo Role: Knight (Cyan), Princess (Pink)
+                if self.role == "princess":
+                    sdl2.SDL_SetTextureColorMod(mele_tex, 255, 100, 200) # Pink
+                else:
+                    sdl2.SDL_SetTextureColorMod(mele_tex, 0, 255, 255)   # Cyan
+                    
                 # Vị trí vẽ dựa trên attack_rect đã tính ở update
                 m_draw_x = int(self.attack_rect.x - camera.x)
                 m_draw_y = int(self.attack_rect.y - camera.y)
@@ -545,9 +611,15 @@ class Player(Entity):
 
         # 4. Vẽ Hitbox Debug (Giữ nguyên)
         if self.debug_mode:
-            # Hitbox nhân vật (xanh lá)
+            # Hitbox nhân vật (xanh lá) - VẼ ĐÚNG TỌA ĐỘ VẬT LÝ
+            hit_draw_x = int(self.rect.x - camera.x)
+            hit_draw_y = int(self.rect.y - camera.y)
+            hit_draw_w = int(self.rect.w)
+            hit_draw_h = int(self.rect.h)
+            hit_rect = sdl2.SDL_Rect(hit_draw_x, hit_draw_y, hit_draw_w, hit_draw_h)
+            
             sdl2.SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255)
-            sdl2.SDL_RenderDrawRect(renderer, dstrect)
+            sdl2.SDL_RenderDrawRect(renderer, hit_rect)
 
             # Hitbox tấn công (đỏ)
             if self.is_attacking:
@@ -568,20 +640,13 @@ class Player(Entity):
         return sdl2.SDL_HasIntersection(self.rect, other.rect)
 
     def activate_cheat_mode(self):
-        """Mở khóa toàn bộ kỹ năng và hồi đầy chỉ số"""
+        self.is_god_mode = True
+        all_skills = ["dash", "double_jump", "skill_a", "teleport", "aoe"]
+        self.progress["unlocked_skills"] = all_skills
+        self.progress["double_jump"] = True
         
-        # 1. Mở khóa tất cả skill trong tiến trình game
-        all_skills = ["dash", "double_jump", "skill_a"]
-        self.game.player_progress["unlocked_skills"] = all_skills
-        self.game.player_progress["double_jump"] = True # Cập nhật thêm key lẻ nếu có
-        
-        # 2. Cập nhật trạng thái hiện tại của Player ngay lập tức
         self.has_double_jump = True
         self.can_double_jump = True
-        
-        # 3. Hồi đầy HP và Mana
         self.hp = PLAYER_MAX_HP
         self.mana = MANA_MAX
-        
-        # 4. Hiển thị thông báo lên màn hình game
         self.show_speech("GOD MODE & ALL SKILLS UNLOCKED!", 3.0)

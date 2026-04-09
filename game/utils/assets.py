@@ -9,15 +9,24 @@ class AssetManager:
     
     # Cấu hình số khung hình cho từng file ảnh lẻ bạn đã gửi
     ANIM_CONFIG = {
-        # Player
-        "idle":     {"file": "sprites/hero_idle.png",   "frames": 4},
-        "run":      {"file": "sprites/hero_run.png",    "frames": 6},
-        "jump":     {"file": "sprites/hero_jump.png",   "frames": 4},
-        "attack":   {"file": "sprites/hero_attack1.png","frames": 6},
-        "skill":    {"file": "sprites/hero_attack2.png","frames": 8},
-        "death":    {"file": "sprites/hero_death.png",  "frames": 6},
-        "dash":     {"file": "sprites/hero_dash.png",   "frames": 6},
-        "mele":     {"file": "sprites/mele.png",        "frames": 8}, 
+        # Player 1
+        "idle":     {"file": "sprites/hero_idle.png",   "frames": 8,    "frame_w": 128, "frame_h": 128},
+        "run":      {"file": "sprites/hero_run.png",    "frames": 8,    "frame_w": 128, "frame_h": 128},
+        "jump":     {"file": "sprites/hero_jump.png",   "frames": 8,    "frame_w": 128, "frame_h": 128},
+        "attack":   {"file": "sprites/hero_attack.png", "frames": 9,    "frame_w": 128, "frame_h": 128},
+        "skill":    {"file": "sprites/hero_skill.png",  "frames": 7,    "frame_w": 128, "frame_h": 128},
+        "death":    {"file": "sprites/hero_death.png",  "frames": 4,    "frame_w": 128, "frame_h": 128},
+        "dash":     {"file": "sprites/hero_dash.png",   "frames": 8,    "frame_w": 128, "frame_h": 128},
+        "mele":     {"file": "sprites/mele.png",        "frames": 8,    "frame_w": 128, "frame_h": 128}, 
+        # Player 2
+        "idle2":     {"file": "sprites/hero_idle2.png",   "frames": 7,    "frame_w": 128, "frame_h": 128},
+        "run2":      {"file": "sprites/hero_run2.png",    "frames": 8,    "frame_w": 128, "frame_h": 128},
+        "jump2":     {"file": "sprites/hero_jump2.png",   "frames": 8,    "frame_w": 128, "frame_h": 128},
+        "attack2":   {"file": "sprites/hero_attack2.png", "frames": 10,   "frame_w": 128, "frame_h": 128},
+        "skill2":    {"file": "sprites/hero_skill2.png",  "frames": 7,    "frame_w": 128, "frame_h": 128},
+        "death2":    {"file": "sprites/hero_death2.png",  "frames": 5,    "frame_w": 128, "frame_h": 128},
+        "dash2":     {"file": "sprites/hero_dash2.png",   "frames": 7,    "frame_w": 128, "frame_h": 128},
+        "mele":      {"file": "sprites/mele.png",         "frames": 8,    "frame_w": 128, "frame_h": 128}, 
         # Goblin
         "goblin_idle":   {"file": "enemies/Scorpio_idle.png",   "frames": 4},
         "goblin_walk":   {"file": "enemies/Scorpio_walk.png",   "frames": 4},

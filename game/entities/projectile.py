@@ -29,6 +29,24 @@ class Projectile(Entity):
         # 2. Biến mất nếu chạm tường (Tile 1)
         if level.is_solid_at(self.rect.x + (self.rect.w if self.direction > 0 else 0), self.rect.y + 8):
             self.die()
+            return
+
+        # 3. Va chạm với quái
+        for i, enemy in enumerate(level.enemies):
+            if enemy.alive and sdl2.SDL_HasIntersection(self.rect, enemy.rect):
+                enemy.take_damage(self.damage, self.direction)
+                
+                # GỬI TÍN HIỆU VỀ HOST NẾU LÀ CLIENT
+                if self.game.game_mode == "multi" and not self.game.network.is_host:
+                    self.game.network.send_data({
+                        "type": "hit_enemy",
+                        "enemy_idx": i,
+                        "damage": self.damage,
+                        "k_dir": self.direction
+                    })
+                
+                self.die()
+                break
 
     def die(self):
         self.alive = False
@@ -43,6 +61,24 @@ class Projectile(Entity):
         draw_y = int(self.rect.y - camera.y)
         draw_rect = sdl2.SDL_Rect(draw_x, draw_y, self.rect.w, self.rect.h)
         
-        # Luồng sáng màu xanh cyan rực rỡ
-        sdl2.SDL_SetRenderDrawColor(renderer, 0, 255, 255, 255)
+        # Thêm hiệu ứng phát sáng cho chưởng (nhiều lớp màu)
+        # Lớp ngoài (Mờ hơn)
+        sdl2.SDL_SetRenderDrawBlendMode(renderer, sdl2.SDL_BLENDMODE_BLEND)
+        outer_rect = sdl2.SDL_Rect(draw_x - 2, draw_y - 2, self.rect.w + 4, self.rect.h + 4)
+        sdl2.SDL_SetRenderDrawColor(renderer, 0, 100, 255, 150) # Xanh dương đậm mờ
+        sdl2.SDL_RenderFillRect(renderer, outer_rect)
+        
+        # Lớp lõi (Rực rỡ)
+        sdl2.SDL_SetRenderDrawColor(renderer, 0, 255, 255, 255) # Cyan rực rỡ
         sdl2.SDL_RenderFillRect(renderer, draw_rect)
+        
+        # Viền trắng để làm nổi bật
+        sdl2.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 200)
+        sdl2.SDL_RenderDrawRect(renderer, draw_rect)
+        
+        sdl2.SDL_SetRenderDrawBlendMode(renderer, sdl2.SDL_BLENDMODE_NONE)
+        
+        # Vẽ hitbox nếu bật Debug mode (truy cập qua game)
+        if self.game.states["playing"].player and self.game.states["playing"].player.debug_mode:
+            sdl2.SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255) # Màu đỏ debug
+            sdl2.SDL_RenderDrawRect(renderer, draw_rect)

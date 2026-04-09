@@ -21,10 +21,16 @@ class Button(Entity):
             self.color = COLORS["green"]
 
     def update(self, delta_time, level):
-        # Kiểm tra va chạm với player để tự động kích hoạt (nếu muốn)
-        player = level.game.player
-        if player and not self.pressed and self.collides_with(player):
-            self.on_interact(player)
+        # Kiểm tra va chạm với cả 2 player (Local + Remote) để tự động kích hoạt
+        playing_state = level.game.states["playing"]
+        players = [playing_state.local_player]
+        if hasattr(playing_state, "remote_player") and playing_state.remote_player:
+            players.append(playing_state.remote_player)
+            
+        for player in players:
+            if player and not self.pressed and self.collides_with(player):
+                self.on_interact(player)
+                break
 
     def render(self, renderer, camera):
         draw_rect = sdl2.SDL_Rect(

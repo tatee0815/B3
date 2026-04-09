@@ -50,7 +50,7 @@ class BreakableBox(Entity):
         from game.utils.save import save_game
         save_game(self.game.player_progress)
 
-    def break_box(self):
+    def break_box(self, sync_drop_type=None):
         if self.broken:
             return
         
@@ -67,8 +67,15 @@ class BreakableBox(Entity):
         drop_x = center_x - 10 
         drop_y = center_y - 10 
         
-        drop_type = random.choice(self.possible_drops)
+        drop_type = sync_drop_type if sync_drop_type else random.choice(self.possible_drops)
         drop = None
+        
+        if self.game.game_mode == "multi" and not sync_drop_type:
+            self.game.network.send_data({
+                "type": "box_broken",
+                "box_id": self.box_id,
+                "drop": drop_type
+            })
 
         if drop_type == "coin":
             drop = Coin(self.game, drop_x, drop_y, value=5)

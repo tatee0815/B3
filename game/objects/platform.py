@@ -86,16 +86,21 @@ class MovingPlatform(Platform):
         self.rect.x = int(round(self.pos_x))
         self.rect.y = int(round(self.pos_y))
 
-        # Kéo nhân vật đi theo (giữ nguyên logic cũ của ba)
+        # Kéo nhân vật đi theo (giữ nguyên logic gốc của bạn)
         dx = self.pos_x - old_x
         dy = self.pos_y - old_y
         if level:
-            player = level.game.states["playing"].player
-            if self.is_player_on_top(player):
-                player.pos_x += dx
-                player.pos_y += dy
-                player.rect.x = int(round(player.pos_x))
-                player.rect.y = int(round(player.pos_y))
+            playing_state = level.game.states["playing"]
+            players = [playing_state.local_player]
+            if hasattr(playing_state, "remote_player") and playing_state.remote_player:
+                players.append(playing_state.remote_player)
+                
+            for player in players:
+                if player and self.is_player_on_top(player):
+                    player.pos_x += dx
+                    player.pos_y += dy
+                    player.rect.x = int(round(player.pos_x))
+                    player.rect.y = int(round(player.pos_y))
 
     def is_player_on_top(self, player):
         # 1. Player phải đang đứng trên đất (hoặc rơi xuống bục)

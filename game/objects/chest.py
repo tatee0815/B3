@@ -3,11 +3,12 @@ import sdl2.sdlttf as ttf
 from game.constants import COLORS
 
 class Chest:
-    def __init__(self, game, x, y, w=40, h=32, unlock_skill=None):
+    def __init__(self, game, x, y, w=40, h=32, unlock_skill=None, custom_name=None):
         self.game = game
         self.rect = sdl2.SDL_Rect(x, y, w, h)
         self.opened = False
         self.unlock_skill = unlock_skill  
+        self.custom_name = custom_name # Tên hiển thị tùy chỉnh (e.g. "Bodystone")
         self.z_index = 1
         self.alive = True
         self.show_prompt = False # Cờ hiển thị chữ "Nhấn E"
@@ -32,8 +33,11 @@ class Chest:
             self.show_prompt = False
             chest_id = f"{self.rect.x}_{self.rect.y}"
             
-            # Lấy progress riêng của người chơi (mỗi role có một bảng)
-            progress = player.progress if hasattr(player, 'progress') else self.game.player_progress
+            # Lấy progress riêng của người chơi dựa trên role (Knight hoặc Princess)
+            if "players" in self.game.player_progress:
+                progress = self.game.player_progress["players"][player.role]
+            else:
+                progress = self.game.player_progress
             
             if "opened_chests" not in progress:
                 progress["opened_chests"] = []
@@ -43,6 +47,7 @@ class Chest:
                 # Lưu checkpoint riêng cho player này
                 player.checkpoint_pos = (float(self.rect.x), float(self.rect.y - 20))
                 progress["checkpoint"] = player.checkpoint_pos
+                self.game.player_progress["checkpoint"] = player.checkpoint_pos # Đồng bộ root cho chắc chắn
                 
                 # Mở khóa kỹ năng cho player này
                 if self.unlock_skill:
@@ -52,17 +57,21 @@ class Chest:
                         progress.setdefault("unlocked_skills", []).append(self.unlock_skill)
                 
                 self.message_timer = self.message_duration
-                skill_names = {
-                    "dash": "LƯỚT (C)",
-                    "skill_a": "BẮN CHƯỞNG (A)",
-                    "double_jump": "NHẢY KÉP (Z)"
-                }
-                name = skill_names.get(self.unlock_skill, "KỸ NĂNG MỚI")
+                if self.custom_name:
+                    name = self.custom_name
+                else:
+                    skill_names = {
+                        "dash": "LƯỚT (C)",
+                        "skill_a": "BẮN CHƯỞNG (A)",
+                        "double_jump": "NHẬY KÉP (Z)",
+                        "teleport": "DỊCH CHUYỂN (C)",
+                        "aoe": "KIẾM PHÁ (A)"
+                    }
+                    name = skill_names.get(self.unlock_skill, "KỸ NĂNG MỚI")
                 self.unlocked_text = f"ĐÃ MỞ KHÓA: {name}!"
                 
-                # Lưu toàn bộ tiến trình game (cả hai người)
-                from game.utils.save import save_game
-                save_game(self.game.player_progress)
+                # Lưu toàn bộ tiến trình game ngay lập tức
+                self.game.save_current_game()
 
     def update(self, delta_time, level):
         if self.message_timer > 0:

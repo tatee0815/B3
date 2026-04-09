@@ -105,6 +105,10 @@ class Heart(Collectible):
         player.hp = min(player.hp + 1, PLAYER_MAX_HP)
         if hasattr(player, 'show_speech'):
             player.show_speech(random.choice(PLAYER_COLLECT_QUOTES["heart"]))
+        
+        if self.game.game_mode == "multi":
+            self.game.network.send_data({"type": "item_collected", "item_id": self.item_id})
+            
         self.kill()  # loại bỏ khỏi game sau khi nhặt
 
 class Coin(Collectible):
@@ -126,6 +130,10 @@ class Coin(Collectible):
         player.add_gold(self.value)
         if hasattr(player, 'show_speech'):
             player.show_speech(random.choice(PLAYER_COLLECT_QUOTES["coin"]))
+            
+        if self.game.game_mode == "multi":
+            self.game.network.send_data({"type": "item_collected", "item_id": self.item_id, "is_coin": True, "value": self.value})
+            
         self.kill()  # loại bỏ khỏi game sau khi nhặt
 
 class ManaBottle(Collectible):
@@ -145,6 +153,10 @@ class ManaBottle(Collectible):
         player.mana = min(player.mana + self.value, 100)
         if hasattr(player, 'show_speech'):
             player.show_speech(random.choice(PLAYER_COLLECT_QUOTES["mana"]))
+            
+        if self.game.game_mode == "multi":
+            self.game.network.send_data({"type": "item_collected", "item_id": self.item_id})
+            
         self.kill()  # loại bỏ khỏi game sau khi nhặt
 
 class Princess(Entity):

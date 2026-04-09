@@ -24,10 +24,17 @@ class PauseState:
     def on_enter(self, **kwargs):
         self.mode = "main"
         self.selected = 0
+        self.is_connection_lost = kwargs.get("is_connection_lost", False)
+        self.remote_paused = kwargs.get("remote_paused", False)
 
     def on_exit(self): pass
 
-    def update(self, delta_time): pass
+    def update(self, delta_time):
+        # TỰ ĐỘNG KHÔI PHỤC NẾU CÓ TÍN HIỆU LẠI
+        if self.is_connection_lost and self.game.network.connected:
+            self.is_connection_lost = False
+            # Có thể reload lại progress từ file nếu muốn chắc chắn
+            # self.game.load_selected_game()
 
     def handle_event(self, event):
         if event.type != sdl2.SDL_KEYDOWN: return
@@ -79,13 +86,27 @@ class PauseState:
         if scancode in (sdl2.SDL_SCANCODE_RETURN, sdl2.SDL_SCANCODE_Z, sdl2.SDL_SCANCODE_SPACE):
             AudioManager.play_sfx("select")
             if self.mode == "main":
-                if self.selected == 0: self.game.change_state("playing")
+                if self.selected == 0:
+                    if self.is_connection_lost:
+                        # Gửi lại Handshake để thử tìm lại đối phương
+                        if self.game.network.is_host:
+                            self.game.network.send_data({"type": "handshake_ack"})
+                        else:
+                            self.game.network.send_data({"type": "handshake", "role": "princess"})
+                        AudioManager.play_sfx("select")
+                        return
+                    self.game.change_state("playing")
                 elif self.selected == 1:
                     self.mode = "settings_main"
                     self.selected = 0
                 elif self.selected == 2: 
                     from game.utils.save import save_game
                     save_game(self.game.player_progress) # Lưu lại trước khi ra Menu
+                    
+                    # GỬI TÍN HIỆU NGẮT KẾT NỐI NGAY LẬP TỨC CHO ĐỐI PHƯƠNG
+                    if self.game.game_mode == "multi":
+                        self.game.network.send_data({"type": "disconnect"})
+                        
                     self.game.change_state("menu")
             
             elif self.mode == "settings_main":
@@ -127,10 +148,17 @@ class PauseState:
         sdl2.SDL_RenderFillRect(renderer, sdl2.SDL_Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT))
 
         title = "TẠM DỪNG"
-        if self.mode == "settings_main": title = "CÀI ĐẶT"
+        title_color = (255, 215, 0)
+        if self.is_connection_lost:
+            title = "MẤT KẾT NỐI"
+            title_color = (255, 0, 0) # Màu đỏ cảnh báo
+        elif self.remote_paused:
+            title = "ĐỐI PHƯƠNG ĐÃ TẠM DỪNG"
+            title_color = (0, 255, 255) # Màu xanh Cyan
+        elif self.mode == "settings_main": title = "CÀI ĐẶT"
         elif self.mode in ("settings_keys", "remap"): title = "TÙY CHỈNH PHÍM"
         
-        self.draw_text(title, SCREEN_WIDTH // 2, 80, (255, 215, 0), use_title_font=True)
+        self.draw_text(title, SCREEN_WIDTH // 2, 80, title_color, use_title_font=True)
 
         if self.mode == "main":
             self._render_menu(renderer, self.main_options, y_start=SCREEN_HEIGHT // 2 - 100)
@@ -140,13 +168,20 @@ class PauseState:
             self._render_key_config(renderer)
 
         hint = "LEFT/RIGHT/UP/DOWN : Điều chỉnh   ENTER : Chọn   ESC : Quay lại"
-        if self.mode == "remap": hint = "NHẤN PHÍM MỚI ĐỂ GÁN (ESC để hủy)"
+        if self.is_connection_lost:
+            hint = "ĐỐI PHƯƠNG ĐÃ MẤT KẾT NỐI - HÃY THOÁT RA MENU"
+        elif self.mode == "remap": hint = "NHẤN PHÍM MỚI ĐỂ GÁN (ESC để hủy)"
         self.draw_text(hint, SCREEN_WIDTH // 2, SCREEN_HEIGHT - 65, (180, 180, 180))
 
     def _render_menu(self, renderer, options, y_start):
         y = y_start
         for i, opt in enumerate(options):
             is_sel = (i == self.selected)
+            display_text = opt
+            # Nếu đang mất mạng, đổi tên nút đầu tiên
+            if i == 0 and self.is_connection_lost:
+                display_text = "Thử kết nối lại"
+                
             rect = sdl2.SDL_Rect(SCREEN_WIDTH // 2 - 200, y, 400, 70)
             if is_sel:
                 sdl2.SDL_SetRenderDrawColor(renderer, 255, 215, 0, 255)
@@ -155,8 +190,11 @@ class PauseState:
                 sdl2.SDL_SetRenderDrawColor(renderer, 20, 20, 20, 160)
                 tc = (255, 255, 255)
             sdl2.SDL_RenderFillRect(renderer, rect)
-            self.draw_text(opt, SCREEN_WIDTH // 2, y + 35, tc) 
+            self.draw_text(display_text, SCREEN_WIDTH // 2, y + 35, tc) 
             y += 85
+        
+        if self.is_connection_lost:
+            self.draw_text("TIẾN TRÌNH ĐÃ ĐƯỢC LƯU AN TOÀN", SCREEN_WIDTH // 2, y + 20, (0, 255, 127))
 
     def _render_settings_main(self, renderer):
         st = self.game.states["setting"]

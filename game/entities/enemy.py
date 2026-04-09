@@ -58,6 +58,29 @@ class Enemy(Entity):
         self.speech_text = random.choice(ENEMY_QUOTES[category])
         self.speech_timer = self.speech_duration
 
+    def _get_target_player(self):
+        """Tìm người chơi gần nhất (Local hoặc Remote)"""
+        players = []
+        if self.game.player:
+            players.append(self.game.player)
+        
+        playing_state = self.game.states.get("playing")
+        if playing_state and getattr(playing_state, "remote_player", None):
+            players.append(playing_state.remote_player)
+            
+        if not players:
+            return None
+            
+        # Trả về người chơi gần nhất
+        closest_player = None
+        min_dist = 999999
+        for p in players:
+            dist = (p.rect.x - self.rect.x)**2 + (p.rect.y - self.rect.y)**2
+            if dist < min_dist:
+                min_dist = dist
+                closest_player = p
+        return closest_player
+
     def update(self, delta_time, level):
         if self.is_dead_body:
             self.death_timer -= delta_time
@@ -77,9 +100,9 @@ class Enemy(Entity):
         if self.knockback_timer > 0:
             self.knockback_timer -= delta_time
         else:
-            player = self.game.player
-            if player:
-                self._update_ai_state(player, level)
+            target = self._get_target_player()
+            if target:
+                self._update_ai_state(target, level)
 
         # Vật lý trọng lực
         if not self.is_flying:
@@ -162,16 +185,16 @@ class Enemy(Entity):
         self.hp -= amount
         self.show_speech("hit")
         
-        # --- Khi bị đánh, lập tức quay lại nhìn và dí player ---
-        player = self.game.player
+        # --- Khi bị đánh, lập tức quay lại nhìn và dí người vừa đánh ---
+        target = self._get_target_player() # Có thể ưu tiên người vừa đánh nếu cần, nhưng gần nhất là đủ
         
-        if player:
+        if target:
             self.is_chasing = True
             # Reset cờ thoại để khi bắt đầu đuổi mới nói (tránh spam khi đang bị chém)
             self.has_spoken_detected = True 
             
             # Quay mặt về phía player
-            dx = player.rect.x - self.rect.x
+            dx = target.rect.x - self.rect.x
             if dx != 0:
                 self.direction = 1 if dx > 0 else -1
 
@@ -263,8 +286,16 @@ class Goblin(Enemy):
             self.vel_x = self.patrol_speed * self.direction
 
         # --- GÂY SÁT THƯƠNG KHI CHẠM ---
-        if sdl2.SDL_HasIntersection(self.rect, player.rect):
-            player.take_damage(self.damage, self.direction)
+        # Kiểm tra va chạm với bất kỳ player nào ở gần
+        playing_state = self.game.states.get("playing")
+        targets = [self.game.player]
+        if playing_state and getattr(playing_state, "remote_player", None):
+            targets.append(playing_state.remote_player)
+            
+        for t in targets:
+            if t and t.alive and sdl2.SDL_HasIntersection(self.rect, t.rect):
+                t.take_damage(self.damage, self.direction)
+                break # Mỗi frame chỉ gây dam 1 lần cho 1 người
 
     def update(self, delta_time, level):
         if self.is_dead_body:

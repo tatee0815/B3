@@ -2,9 +2,11 @@
 game.py - Class Game chính 
 """
 
+import os   
 import sdl2
 import sdl2.ext
 import sdl2.sdlttf as ttf
+import time
 from game.utils.network import NetworkManager
 
 from game.constants import (
@@ -62,7 +64,7 @@ class Game:
 
         # Progress người chơi
         self.player_progress = {
-            "current_level": "level1_village",
+            "current_level": "2p_level1_bodystone",
             "unlocked_skills": ["melee"],
             "double_jump": False,
             "skill_a_upgraded": False,
@@ -199,8 +201,29 @@ class Game:
     def save_current_game(self):
         """Hàm bọc (wrapper) để các state gọi lưu game nhanh"""
         filename = self.get_save_filename()
-        # Nếu là chơi mạng, lưu thêm port vào progress để lần sau 'Tiếp tục' tự mở lại
+        
+        # 1. ĐỒNG BỘ DỮ LIỆU LOCAL PLAYER
+        if self.player:
+            role_key = "knight" if self.player.role == "knight" else "princess"
+            prog = self.player_progress["players"][role_key]
+            prog["hp"] = self.player.hp
+            prog["mana"] = self.player.mana
+            prog["coin"] = self.player.gold
+            prog["checkpoint"] = getattr(self.player, "checkpoint_pos", None)
+            self.player_progress["checkpoint"] = prog["checkpoint"] # Đồng bộ thêm vào root để an toàn
+
+        # 2. ĐỒNG BỘ DỮ LIỆU REMOTE PLAYER (Chỉ Host mới có đủ thông tin để lưu cả 2)
         if self.game_mode == "multi" and self.network.is_host:
+            playing_state = self.states.get("playing")
+            if playing_state and playing_state.remote_player:
+                rem = playing_state.remote_player
+                rem_role = rem.role
+                rem_prog = self.player_progress["players"][rem_role]
+                rem_prog["hp"] = rem.hp
+                rem_prog["mana"] = getattr(rem, "mana", 50)
+                rem_prog["checkpoint"] = getattr(rem, "checkpoint_pos", None)
+            
+            # Lưu thêm port nếu là Host
             self.player_progress["last_port"] = self.network.sock.getsockname()[1]
             
         save_game(self.player_progress, filename)
@@ -256,10 +279,17 @@ class Game:
     def toggle_pause(self):
         """Bật/Tắt trạng thái tạm dừng mà không làm mất tiến trình"""
         if self.current_state.name == "playing":
+            # GỬI TÍN HIỆU PAUSE TOÀN CỤC
+            if self.game_mode == "multi":
+                self.network.send_data({"type": "remote_pause"})
+            
             self.is_paused = True
             self.current_state = self.states["pause"]
             self.current_state.on_enter()
         elif self.current_state.name == "pause":
+            # GỬI TÍN HIỆU RESUME TOÀN CỤC
+            if self.game_mode == "multi":
+                self.network.send_data({"type": "remote_resume"})
             self.resume_game()
 
     def resume_game(self):
@@ -267,6 +297,19 @@ class Game:
         self.is_paused = False
         self.current_state = self.states["playing"]
         self.last_time = sdl2.timer.SDL_GetTicks()
+
+    def trigger_network_pause(self):
+        """Tự động đẩy vào màn hình Pause khi mất mạng"""
+        if self.current_state.name in ["playing", "intro"]:
+            # AUTO-SAVE NGAY LẬP TỨC
+            self.save_current_game()
+            
+            self.is_paused = True
+            self.current_state = self.states["pause"]
+            self.current_state.on_enter()
+            # Báo cho màn hình pause biết là do lỗi mạng
+            if hasattr(self.current_state, "is_connection_lost"):
+                self.current_state.is_connection_lost = True
 
     def set_resolution(self, width, height):
         """Thay đổi kích thước cửa sổ và cập nhật scale"""
@@ -317,8 +360,63 @@ class Game:
 
         # --- LẮNG NGHE MẠNG MỖI FRAME ---
         incoming_data = self.network.get_packets()
-        if incoming_data and hasattr(self.current_state, "handle_network"):
-            self.current_state.handle_network(incoming_data)
+        if incoming_data:
+            if hasattr(self.current_state, "handle_network"):
+                self.current_state.handle_network(incoming_data)
+            
+            # KIỂM TRA TÍN HIỆU NGẮT KẾT NỐI CHỦ ĐỘNG
+            for packet in incoming_data:
+                ptype = packet.get("type")
+                if ptype == "disconnect":
+                    print("[Network] Ngắt kết nối.")
+                    # NẾU LÀ CLIENT VÀ HOST THOÁT -> VĂNG MENU
+                    if self.game_mode == "multi" and not self.network.is_host:
+                        self.network.connected = False
+                        self.change_state("menu", error="MẤT KẾT NỐI VỚI HOST")
+                        return
+                    
+                    self.network.connected = False
+                    self.trigger_network_pause()
+                    break
+                
+                elif ptype == "remote_pause":
+                    if self.current_state.name == "playing":
+                        self.is_paused = True
+                        self.current_state = self.states["pause"]
+                        self.current_state.on_enter(remote_paused=True)
+                
+                elif ptype == "remote_resume":
+                    if self.current_state.name == "pause":
+                        self.resume_game()
+
+        # --- XỬ LÝ RE-CONNECT (Dành cho Host đang trong trận) ---
+        if self.network.is_host and self.network.handshake_received:
+            self.network.handshake_received = False
+            # Nếu đang trong trận hoặc intro, bắt máy kia nhảy vào luôn
+            if self.current_state.name in ["playing", "pause", "intro"]:
+                self.network.send_data({
+                    "type": "rejoin_signal",
+                    "level": self.player_progress["current_level"]
+                })
+                # ĐỒNG BỘ VỊ TRÍ PLATFORM 1 LẦN DUY NHẤT
+                if self.current_state.name == "playing":
+                    self.network.send_data({
+                        "type": "platform_sync",
+                        "platforms": self.current_state.level.get_platforms_sync_data()
+                    })
+            
+        # --- KIỂM TRA MẤT KẾT NỐI (TIMEOUT) ---
+        if self.game_mode == "multi" and self.network.connected:
+            # 5 giây không có dữ liệu -> Coi như mất kết nối
+            if time.time() - self.network.last_packet_time > 5.0:
+                print(f"[Network] Mất kết nối tới đối phương (Timeout 5s)")
+                self.network.connected = False
+                
+                # NẾU LÀ CLIENT VÀ HOST MẤT MẠNG -> VĂNG MENU NGAY
+                if not self.network.is_host:
+                    self.change_state("menu", error="MẤT KẾT NỐI VỚI HOST")
+                else:
+                    self.trigger_network_pause()
 
         if self.current_state:
             self.current_state.update(effective_delta)
@@ -334,10 +432,20 @@ class Game:
                 self.camera.update(player)
                 
     def reset_progress(self):
-        # Giữ lại cấu trúc multiplayer nếu có
+        # 1. Xóa file save vật lý nếu chơi Multiplayer để đảm bảo reset spawn ngẫu nhiên
+        if self.game_mode == "multi":
+            save_path = "saves/save_mp.json"
+            if os.path.exists(save_path):
+                try:
+                    os.remove(save_path)
+                    print(f"[Game] Đã xóa file save cũ: {save_path}")
+                except Exception as e:
+                    print(f"[Game] Lỗi khi xóa file save: {e}")
+
+        # 2. Khởi tạo lại dữ liệu progress trong bộ nhớ
         if self.game_mode == "multi":
             self.player_progress = {
-                "current_level": "level1_village",
+                "current_level": "2p_level1_bodystone",
                 "play_time": 0.0,
                 "players": {
                     "knight": {
@@ -408,7 +516,7 @@ class Game:
     def run(self):
         clock = sdl2.SDL_GetTicks()
         while self.running:
-            sdl2.SDL_Delay(10)
+            sdl2.SDL_Delay(5)
             new_clock = sdl2.SDL_GetTicks()
             delta_ms = new_clock - clock
             clock = new_clock

@@ -63,7 +63,11 @@ class LobbyState:
         # Reset network trước khi vào lobby
         if hasattr(self.game.network, 'close'):
             self.game.network.close()
+            
         self.sub_state = "select"
+        action = kwargs.get("action")
+        self.is_continue = kwargs.get("is_continue", False)
+
         save_path = "saves/save_mp.json"
         self.has_save = os.path.exists(save_path)
         self.selected_index = 0
@@ -72,6 +76,18 @@ class LobbyState:
         self.connect_error = False
         self.mode_sent = False
         self.particles.clear()
+
+        # TỰ ĐỘNG HÓA DỰA TRÊN MENU
+        if action == "host":
+            try:
+                self.game.network.start_host(port=5555)
+                self.sub_state = "waiting"
+            except OSError:
+                self.connect_error = True
+        elif action == "client":
+            self.sub_state = "joining"
+            self.input_text = ""
+
         if not self.assets_loaded:
             self._init_assets()
             self.assets_loaded = True
@@ -176,6 +192,8 @@ class LobbyState:
                             self.game.network.start_host(port=5555)
                             self.sub_state = "waiting"
                             self.is_continue = False
+                            # RESET SAVE NGAY LẬP TỨC ĐỂ XÓA SNAPSHOT CŨ
+                            self.game.reset_progress()
                         except OSError:
                             self.connect_error = True
                             
@@ -229,7 +247,20 @@ class LobbyState:
                 self.ready_to_start["other"] = True
             elif packet.get("type") == "game_mode":
                 self.is_continue = packet.get("is_continue", False)
+                if "world_progress" in packet:
+                    self.game.player_progress = packet["world_progress"]
+                    print(f"[Lobby] Received world_progress from Host")
+                    # LƯU NGAY BẢN BACKUP CHO CLIENT
+                    self.game.save_current_game()
                 print(f"[Lobby] Received game_mode: continue={self.is_continue}")
+            elif packet.get("type") == "rejoin_signal":
+                # NHẢY THẲNG VÀO TRẬN ĐANG DIỄN RA
+                target_level = packet.get("level", "level1_village")
+                self.game.player_progress["current_level"] = target_level
+                print(f"[Lobby] Host is already in-game ({target_level}). Rejoining...")
+                sdl2.SDL_StopTextInput()
+                self.game.load_selected_game() # Nạp lại HP, Coin... từ file save
+                self.game.change_state("playing", menu_continue=True)
 
     def update(self, delta_time):
         self.particle_timer += delta_time
@@ -252,16 +283,32 @@ class LobbyState:
                 self.sub_state = "waiting"
 
         if self.game.network.is_host and self.game.network.connected and not self.mode_sent:
-            self.game.network.send_data({"type": "game_mode", "is_continue": self.is_continue})
+            # GỬI THÔNG TIN CHẾ ĐỘ CHƠI VÀ DỮ LIỆU THẾ GIỚI (World State)
+            data = {"type": "game_mode", "is_continue": self.is_continue}
+            if self.is_continue:
+                self.game.load_selected_game() # Nạp save từ file save_mp.json
+                data["world_progress"] = self.game.player_progress
+            
+            self.game.network.send_data(data)
             self.mode_sent = True
+            print(f"[Lobby] Host sent game_mode (continue={self.is_continue})")
 
         if self.game.network.connected:
             self.game.network.send_data({"type": "ready_to_load"})
             if self.ready_to_start["other"]:
                 sdl2.SDL_StopTextInput()
                 if self.is_continue:
-                    self.game.load_selected_game()
-                    self.game.change_state("playing", menu_continue=True)
+                    # KIỂM TRA XEM CÓ THẬT SỰ LÀ SAVE MỚI TINH KHÔNG (Vừa tạo xong chưa chơi)
+                    prog = self.game.player_progress
+                    is_fresh = (prog.get("play_time", 0) == 0 and 
+                                prog.get("current_level") == "2p_level1_bodystone")
+                    
+                    if is_fresh:
+                        print("[Lobby] Save is fresh. Redirecting to Intro...")
+                        self.game.change_state("intro", mode="intro_2p", from_intro=True)
+                    else:
+                        # Máy Host đã load rồi, Client bây giờ sẽ nhận qua packet handle_network
+                        self.game.change_state("playing", menu_continue=True)
                 else:
                     self.game.reset_progress()
                     # Cả hai cùng vào intro 2 người

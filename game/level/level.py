@@ -33,6 +33,7 @@ class Level:
         self.tiles = []  
         self.bg_color = (0, 0, 0, 255)
         self.start_position = (100, 100)
+        self.start_position_p2 = (150, 100)
         self.gravity = GRAVITY
         self.bg_layers = []
         self.is_completed = False
@@ -87,6 +88,9 @@ class Level:
                 
                 if "start_position" in data:
                     self.start_position = (data["start_position"]["x"], data["start_position"]["y"])
+                    self.start_position_p2 = (data["start_position"]["x"] + 50, data["start_position"]["y"])
+                if "start_position_p2" in data:
+                    self.start_position_p2 = (data["start_position_p2"]["x"], data["start_position_p2"]["y"])
                 return True
         except Exception as e:
             print(f"[Level] Lỗi JSON: {e}")
@@ -273,7 +277,9 @@ class Level:
                     sdl2.SDL_DestroyTexture(text_texture)
                     sdl2.SDL_FreeSurface(text_surface)
 
-    def get_spawn_position(self):
+    def get_spawn_position(self, is_p2=False):
+        if is_p2:
+            return self.start_position_p2
         return self.start_position
 
     def check_win(self, player):
@@ -290,26 +296,36 @@ class Level:
         self.buttons.clear()  
         self.gates.clear()
         
-        for e in self.entities_data:
+        # --- LẤY DANH SÁCH ĐÃ THU THẬP/BỊ GIẾT ---
+        collected_list = game.player_progress.get("collected_entities", [])
+
+        for i, e in enumerate(self.entities_data):
             etype = e.get("type")
             x, y = e.get("x"), e.get("y")
+            entity_id = f"json_{etype}_{x}_{y}_{i}"
             
+            if entity_id in collected_list:
+                continue
+
             # --- Xử lý các loại Quái vật ---
             if etype == "goblin":
                 goblin = Goblin(game, e["x"], e["y"])
                 goblin.type = "goblin" # Để playing.py nhận diện được
+                goblin.entity_id = entity_id
                 self.entities.append(goblin)
                 self.enemies.append(goblin)
                 
             elif etype == "skeleton":
                 skeleton = Skeleton(game, e["x"], e["y"])
                 skeleton.type = "skeleton" # Để playing.py nhận diện được
+                skeleton.entity_id = entity_id
                 self.entities.append(skeleton)
                 self.enemies.append(skeleton)
 
             elif etype in ("fire_bat", "firebat"):
                 fire_bat = FireBat(game, e["x"], e["y"])
                 fire_bat.type = "fire_bat" # Để playing.py nhận diện được
+                fire_bat.entity_id = entity_id
                 self.entities.append(fire_bat)
                 self.enemies.append(fire_bat)
 
@@ -334,15 +350,16 @@ class Level:
                         is_horizontal=p_horiz
                     ))
                 
-            # --- NHÓM ITEM THU THẬP ---
-            elif etype == "coin":
-                self.entities.append(Coin(game, x, y))
-            elif etype == "mana":
-                self.entities.append(ManaBottle(game, x, y))
-            elif etype == "heart":
-                self.entities.append(Heart(game, x, y))
             elif etype == "princess":
-                self.entities.append(Princess(self.game, x, y))
+                p = Princess(self.game, x, y)
+                p.entity_id = entity_id
+                self.entities.append(p)
+            
+            elif etype in ("coin", "mana", "heart"):
+                item_classes = {"coin": Coin, "mana": ManaBottle, "heart": Heart}
+                item = item_classes[etype](game, x, y)
+                item.entity_id = entity_id
+                self.entities.append(item)
 
             # --- NHÓM VẬT THỂ PHÁ HỦY ---
             elif etype == "breakable":
@@ -359,9 +376,10 @@ class Level:
             elif etype == "chest":
                 from game.objects.chest import Chest
                 unlock = e.get("unlock", None)
+                custom_name = e.get("custom_name", None)
                 
                 # 1. Tạo instance rương
-                new_chest = Chest(game, x, y, unlock_skill=unlock)
+                new_chest = Chest(game, x, y, unlock_skill=unlock, custom_name=custom_name)
                 
                 # 2. Tạo ID duy nhất cho rương dựa trên tọa độ
                 chest_id = f"{x}_{y}"
@@ -398,7 +416,41 @@ class Level:
                 self.gates.append(gate)
                 self.entities.append(gate)
         
-        self.spawn_random_collectibles(count=10, types=[Coin, ManaBottle])
+        # --- NHÓM VẬT PHẨM NGẪU NHIÊN (CÓ LƯU TRẠM) ---
+        random_items_data = game.player_progress.get("random_items", {}).get(self.name, [])
+        if random_items_data:
+            # Load lại từ save
+            for item_info in random_items_data:
+                rid = item_info["id"]
+                if rid in collected_list: continue
+                
+                itype = item_info["type"]
+                rx, ry = item_info["x"], item_info["y"]
+                
+                if itype == "Coin": item = Coin(game, rx, ry)
+                elif itype == "ManaBottle": item = ManaBottle(game, rx, ry)
+                else: item = Heart(game, rx, ry)
+                
+                item.entity_id = rid
+                self.entities.append(item)
+        else:
+            # Nếu chưa có -> Sinh mới và lưu lại
+            self.spawn_random_collectibles(count=10, types=[Coin, ManaBottle])
+            
+            # Sau khi spawn, lưu snapshot vào progress
+            new_random_list = []
+            for e in self.entities:
+                if hasattr(e, "is_random_spawn") and e.is_random_spawn:
+                    new_random_list.append({
+                        "id": e.entity_id,
+                        "type": e.__class__.__name__,
+                        "x": e.rect.x,
+                        "y": e.rect.y
+                    })
+            
+            if "random_items" not in game.player_progress:
+                game.player_progress["random_items"] = {}
+            game.player_progress["random_items"][self.name] = new_random_list
         
         # --- Trả lại random tự do cho các xử lý khác sau này ---
         random.seed()
@@ -435,6 +487,29 @@ class Level:
         
         print(f"[Level] Đã spawn {enemy_type} tại ({x}, {y})")
         return enemy
+
+    def get_platforms_sync_data(self):
+        """Lấy tọa độ hiện tại của các sàn di động để đồng bộ 1 lần"""
+        data = []
+        for p in self.platforms:
+            if isinstance(p, MovingPlatform):
+                data.append({"x": p.rect.x, "y": p.rect.y})
+        return data
+
+    def mark_entity_collected(self, entity_id):
+        """Đánh dấu thực thể đã bị thu thập hoặc tiêu diệt vào danh sách lưu trữ"""
+        if not entity_id: return
+        
+        # Nếu là Client -> Gửi tín hiệu về Host để Host lưu 
+        if self.game.game_mode == "multi" and not self.game.network.is_host:
+            self.game.network.send_data({"type": "entity_collected", "entity_id": entity_id})
+        
+        # Host (hoặc máy chơi đơn) trực tiếp lưu vào progress
+        collected_list = self.game.player_progress.setdefault("collected_entities", [])
+        if entity_id not in collected_list:
+            collected_list.append(entity_id)
+            # Nếu là Host -> Có thể chủ động gửi sync cho Client nếu muốn (không bắt buộc vì Client cũng tự remove)
+            print(f"[Level] Đã lưu thực thể {entity_id} vào danh sách thu thập.")
 
     def update_entities(self, delta_time):
         player = self.game.player
@@ -491,6 +566,10 @@ class Level:
                 if hasattr(entity, 'alive') and not entity.alive:
                     continue
                 if sdl2.SDL_HasIntersection(player.rect, entity.rect):
+                    # LƯU TRẠNG THÁI VĨNH VIỄN
+                    eid = getattr(entity, 'entity_id', None)
+                    if eid: self.mark_entity_collected(eid)
+                    
                     entity.on_collect(player)
                     entity.alive = False
                     if entity in self.entities: self.entities.remove(entity)
@@ -507,6 +586,11 @@ class Level:
 
             # --- E. QUÁI VẬT VÀ CÁC THỨ CÒN LẠI ---
             elif hasattr(entity, 'update'):
+                # XỬ LÝ QUÁI VẬT BỊ TIÊU DIỆT (Persistent death)
+                if isinstance(entity, Enemy) and not entity.alive:
+                    eid = getattr(entity, 'entity_id', None)
+                    if eid: self.mark_entity_collected(eid)
+                
                 # Vì Checkpoint đã xử lý ở mục A, ở đây chỉ còn Enemy/Projectiles...
                 entity.update(delta_time, self)
 
@@ -668,6 +752,8 @@ class Level:
 
             # Tạo item và thêm vào danh sách entities
             item = item_class(self.game, x, y)
+            item.is_random_spawn = True
+            item.entity_id = f"rnd_{self.name}_{spawned}"
             self.entities.append(item)
             spawned += 1
 

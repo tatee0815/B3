@@ -23,6 +23,7 @@ class MenuState:
 
         self.main_options = ["Chơi 1 người", "Chơi 2 người", "Cài đặt", "Thoát game"]
         self.sp_options = ["Tiếp tục", "Bắt đầu mới", "Quay lại"]
+        self.mp_options = ["Tiếp tục", "Bắt đầu mới", "Tham gia", "Quay lại"]
         self.options = self.main_options
         self.current_menu = "main"
 
@@ -41,11 +42,36 @@ class MenuState:
         self.particle_timer = 0.0
         self.assets_loaded = False
 
+        # Error notification
+        self.error_msg = ""
+        self.error_timer = 0.0
+
     def on_enter(self, **kwargs):
         self.selected = 0
         self.current_menu = "main"
         self.options = self.main_options
         self.particles.clear()
+        
+        # KIỂM TRA FILE SAVE ĐỂ HIỆN/ẨN NÚT TIẾP TỤC
+        import os
+        has_sp_save = os.path.exists("saves/save_sp.json")
+        has_mp_save = os.path.exists("saves/save_mp.json")
+
+        if has_sp_save:
+            self.sp_options = ["Tiếp tục", "Bắt đầu mới", "Quay lại"]
+        else:
+            self.sp_options = ["Bắt đầu mới", "Quay lại"]
+
+        if has_mp_save:
+            self.mp_options = ["Tiếp tục", "Bắt đầu mới", "Tham gia", "Quay lại"]
+        else:
+            self.mp_options = ["Bắt đầu mới", "Tham gia", "Quay lại"]
+
+        # Nhận thông báo lỗi nếu có (ví dụ: mất kết nối với Host)
+        self.error_msg = kwargs.get("error", "")
+        if self.error_msg:
+            self.error_timer = 5.0 # Hiển thị trong 5 giây
+
         if not self.assets_loaded:
             self._init_assets()
             self.assets_loaded = True
@@ -115,6 +141,9 @@ class MenuState:
             p.alpha = int(max(0, 255 * (p.life / 2.5)))
             if p.life <= 0: self.particles.remove(p)
 
+        if self.error_timer > 0:
+            self.error_timer -= delta_time
+
     def handle_event(self, event):
         if event.type == sdl2.SDL_KEYDOWN:
             scancode = event.key.keysym.scancode
@@ -152,8 +181,10 @@ class MenuState:
                 self.selected = 0
                 self._refresh_menu_textures()
             elif choice == "Chơi 2 người":
-                self.game.game_mode = "multi"
-                self.game.change_state("lobby")
+                self.options = self.mp_options
+                self.current_menu = "multi_player"
+                self.selected = 0
+                self._refresh_menu_textures()
             elif choice == "Cài đặt":
                 self.game.change_state("setting")
             elif choice == "Thoát game":
@@ -168,6 +199,26 @@ class MenuState:
                 self.game.game_mode = "single"
                 self.game.reset_progress() 
                 self.game.change_state("intro", mode="intro_1p", from_intro=True)
+            elif choice == "Quay lại":
+                self.options = self.main_options
+                self.current_menu = "main"
+                self.selected = 0
+                self._refresh_menu_textures()
+
+        elif self.current_menu == "multi_player":
+            if choice == "Tiếp tục":
+                self.game.game_mode = "multi"
+                # Nạp save_mp.json trước khi vào Lobby
+                self.game.load_selected_game() 
+                self.game.change_state("lobby", action="host", is_continue=True)
+            elif choice == "Bắt đầu mới":
+                self.game.game_mode = "multi"
+                # Reset save_mp.json
+                self.game.reset_progress()
+                self.game.change_state("lobby", action="host", is_continue=False)
+            elif choice == "Tham gia":
+                self.game.game_mode = "multi"
+                self.game.change_state("lobby", action="client")
             elif choice == "Quay lại":
                 self.options = self.main_options
                 self.current_menu = "main"
@@ -218,5 +269,18 @@ class MenuState:
         # 5. Hint (Vẽ duy nhất một lần ở trung tâm dưới)
         if self.hint_tex:
             sdl2.SDL_RenderCopy(renderer, self.hint_tex, None, self.hint_rect)
+
+        # 6. Error Message (Màu Đỏ, 5 giây)
+        if self.error_timer > 0 and self.error_msg:
+            rgba = sdl2.SDL_Color(255, 0, 0, 255)
+            surf = ttf.TTF_RenderUTF8_Blended(self.game.font, self.error_msg.encode('utf-8'), rgba)
+            if surf:
+                tex = sdl2.SDL_CreateTextureFromSurface(renderer, surf)
+                tw, th = surf.contents.w, surf.contents.h
+                # Vẽ dưới tiêu đề một chút
+                dst = sdl2.SDL_Rect(SCREEN_WIDTH // 2 - tw // 2, 160, tw, th)
+                sdl2.SDL_RenderCopy(renderer, tex, None, dst)
+                sdl2.SDL_DestroyTexture(tex)
+                sdl2.SDL_FreeSurface(surf)
 
     def on_exit(self): pass
