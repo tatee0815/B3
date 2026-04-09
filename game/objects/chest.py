@@ -33,11 +33,8 @@ class Chest:
             self.show_prompt = False
             chest_id = f"{self.rect.x}_{self.rect.y}"
             
-            # Lấy progress riêng của người chơi dựa trên role (Knight hoặc Princess)
-            if "players" in self.game.player_progress:
-                progress = self.game.player_progress["players"][player.role]
-            else:
-                progress = self.game.player_progress
+            # Sử dụng progress động của player (đã được cải cách ở lớp Player)
+            progress = player.progress
             
             if "opened_chests" not in progress:
                 progress["opened_chests"] = []

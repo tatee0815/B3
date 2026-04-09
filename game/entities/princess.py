@@ -9,11 +9,6 @@ class Princess(Player):
     def __init__(self, game):
         super().__init__(game)
         self.role = "princess"
-        # 1. Xác định progress của người chơi theo role (Multiplayer support)
-        if "players" in self.game.player_progress:
-            self.progress = self.game.player_progress["players"][self.role]
-        else:
-            self.progress = self.game.player_progress # Fallback
             
         progress = self.progress
         self.hp = progress.get("hp", PLAYER_MAX_HP)

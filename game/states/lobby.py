@@ -25,7 +25,7 @@ class LobbyState:
         self.sub_state = "select"
         self.ready_to_start = {"me": False, "other": False}
         
-        save_path = "saves/save_mp.json"
+        save_path = "save_mp.json"
         self.has_save = os.path.exists(save_path)
         self.selected_index = 0
         self._build_options()
@@ -68,7 +68,7 @@ class LobbyState:
         action = kwargs.get("action")
         self.is_continue = kwargs.get("is_continue", False)
 
-        save_path = "saves/save_mp.json"
+        save_path = "save_mp.json"
         self.has_save = os.path.exists(save_path)
         self.selected_index = 0
         self._build_options()

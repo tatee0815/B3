@@ -9,34 +9,36 @@ from .base import Entity
 from .projectile import Projectile
 
 class Player(Entity):
+    @property
+    def progress(self):
+        """Dynamic access to the correct progress record in game.player_progress"""
+        if "players" in self.game.player_progress:
+            return self.game.player_progress["players"].get(self.role, {})
+        return self.game.player_progress
+
     def __init__(self, game):
         # Khởi tạo tại tọa độ mặc định, kích thước nhân vật 36x60
         super().__init__(game, x=-1000, y=-1000, w=36, h=60)
+        self.is_remote = False
         self.z_index = 4
         self.is_visible = True
         self.role = "knight"
         
-        # 1. Xác định progress của người chơi theo role (Multiplayer support)
-        if "players" in self.game.player_progress:
-            self.progress = self.game.player_progress["players"][self.role]
-        else:
-            self.progress = self.game.player_progress # Fallback cho single player cũ
-        
-        progress = self.progress
-        
-        # Chỉ số cơ bản
-        self.hp = progress.get("hp", PLAYER_MAX_HP)
-        self.mana = progress.get("mana", 50)
+        # Chỉ số cơ bản (Khởi tạo từ progress hiện tại)
+        self.hp = self.progress.get("hp", PLAYER_MAX_HP)
+        self.mana = self.progress.get("mana", 50)
         self.mana_warning_timer = 0
         self.mana_warning_duration = 1.0  # Thời gian hiển thị cảnh báo thiếu mana (giây)
+
         # Coin is now a property to share between players
         if "coin" not in self.game.player_progress:
             self.game.player_progress["coin"] = 0
+            
         self.gold_milestone = self.gold // 20
         self.invincible_time = 0.0   # Thời gian bất tử (giây)
         self.invincible_duration = 2.0        # Thời gian bất tử sau khi bị đánh (giây)
         self.knockback_vel_x = 0.0 # Vận tốc knockback theo trục X (bật lùi)
-        self.checkpoint_pos = progress.get("checkpoint")
+        self.checkpoint_pos = self.progress.get("checkpoint")
 
         # Trạng thái di chuyển (Để tránh khựng phím)
         self.moving_left = False
@@ -44,7 +46,7 @@ class Player(Entity):
         self.facing_right = True
         self.can_dash_in_air = True # Cho phép dash trên không nếu đã nhảy
         
-        # Trạng thái kỹ năng
+        # Trạng thái kỹ năng (Luôn check trực tiếp từ progress)
         self.has_double_jump = self.progress.get("double_jump", False)
         self.can_double_jump = self.has_double_jump
         self.jumped_once = False

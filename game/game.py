@@ -185,10 +185,8 @@ class Game:
         
         if self.game_mode == "multi" and not self.network.is_host:
             self.player = Princess(self)
-            self.player.progress = self.player_progress["players"]["princess"]
         else:
             self.player = Player(self)
-            self.player.progress = self.player_progress["players"]["knight"]
         self.player.game = self
         
         # Đồng bộ self.lives với player hiện tại
@@ -208,9 +206,12 @@ class Game:
             prog = self.player_progress["players"][role_key]
             prog["hp"] = self.player.hp
             prog["mana"] = self.player.mana
-            prog["coin"] = self.player.gold
             prog["checkpoint"] = getattr(self.player, "checkpoint_pos", None)
-            self.player_progress["checkpoint"] = prog["checkpoint"] # Đồng bộ thêm vào root để an toàn
+            
+            # Cập nhật lives chung cho toàn bộ profile
+            self.player_progress["lives"] = self.lives
+            prog["lives"] = self.lives
+            prog["coin"] = self.player.gold
 
         # 2. ĐỒNG BỘ DỮ LIỆU REMOTE PLAYER (Chỉ Host mới có đủ thông tin để lưu cả 2)
         if self.game_mode == "multi" and self.network.is_host:
@@ -434,7 +435,7 @@ class Game:
     def reset_progress(self):
         # 1. Xóa file save vật lý nếu chơi Multiplayer để đảm bảo reset spawn ngẫu nhiên
         if self.game_mode == "multi":
-            save_path = "saves/save_mp.json"
+            save_path = "save_mp.json"
             if os.path.exists(save_path):
                 try:
                     os.remove(save_path)
@@ -475,16 +476,35 @@ class Game:
         else:
             self.player_progress = {
                 "current_level": "level1_village",
-                "unlocked_skills": ["melee"],
-                "double_jump": False,
-                "skill_a_upgraded": False,
                 "total_deaths": 0,
                 "high_score": 0,
                 "play_time": 0.0,
-                "opened_chests": [],
-                "checkpoint": None,
                 "coin": 0,
-                "lives": MAX_LIVES
+                "lives": MAX_LIVES,
+                "players": {
+                    "knight": {
+                        "unlocked_skills": ["melee"],
+                        "double_jump": False,
+                        "skill_a_upgraded": False,
+                        "coin": 0,
+                        "lives": MAX_LIVES,
+                        "hp": PLAYER_MAX_HP,
+                        "mana": 50,
+                        "checkpoint": None,
+                        "opened_chests": []
+                    },
+                    "princess": {
+                        "unlocked_skills": ["melee"],
+                        "double_jump": False,
+                        "skill_a_upgraded": False,
+                        "coin": 0,
+                        "lives": MAX_LIVES,
+                        "hp": PLAYER_MAX_HP,
+                        "mana": 50,
+                        "checkpoint": None,
+                        "opened_chests": []
+                    }
+                }
             }
         if self.player:
             self.lives = self.player.progress.get("lives", MAX_LIVES)
@@ -543,11 +563,3 @@ class Game:
 
     def on_quit(self):
         self.save_current_game()
-        if self.current_state.name == "playing":
-            if self.player and hasattr(self.player, 'checkpoint_pos'):
-                # Lưu checkpoint vào đúng progress của player
-                if hasattr(self.player, 'progress'):
-                    self.player.progress["checkpoint"] = self.player.checkpoint_pos
-                else:
-                    self.player_progress["checkpoint"] = self.player.checkpoint_pos
-        save_game(self.player_progress)

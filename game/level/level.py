@@ -385,7 +385,10 @@ class Level:
                 chest_id = f"{x}_{y}"
                 
                 # 3. Kiểm tra xem ID này có trong danh sách đã mở chưa
-                opened_list = game.player_progress.get("opened_chests", [])
+                # Ưu tiên lấy từ progress của player hiện tại
+                progress = game.player.progress if game.player else game.player_progress
+                opened_list = progress.get("opened_chests", [])
+                
                 if chest_id in opened_list:
                     new_chest.opened = True # Đánh dấu đã mở ngay từ đầu
                 

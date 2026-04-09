@@ -114,6 +114,7 @@ class PlayingState:
                 spawn_pos = self.level.get_spawn_position(is_p2=is_client)
                 self.player.respawn(spawn_pos)
                 self.player.checkpoint_pos = spawn_pos
+                self.player.progress["checkpoint"] = spawn_pos
                 self.game.player_progress["checkpoint"] = spawn_pos
 
         # Đặt trước vị trí sinh ra cho remote_player tránh lỗi bị rớt map ở những frame đầu tiên

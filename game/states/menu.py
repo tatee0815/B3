@@ -54,8 +54,8 @@ class MenuState:
         
         # KIỂM TRA FILE SAVE ĐỂ HIỆN/ẨN NÚT TIẾP TỤC
         import os
-        has_sp_save = os.path.exists("saves/save_sp.json")
-        has_mp_save = os.path.exists("saves/save_mp.json")
+        has_sp_save = os.path.exists("save_sp.json")
+        has_mp_save = os.path.exists("save_mp.json")
 
         if has_sp_save:
             self.sp_options = ["Tiếp tục", "Bắt đầu mới", "Quay lại"]
