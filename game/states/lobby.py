@@ -160,28 +160,25 @@ class LobbyState:
                 elif scancode in (sdl2.SDL_SCANCODE_RETURN, sdl2.SDL_SCANCODE_Z, sdl2.SDL_SCANCODE_SPACE):
                     selected = self.options[self.selected_index]
                     AudioManager.play_sfx("select")
+                    
                     if selected == "Tiếp tục":
-                        port = self.game.load_port_from_save("save_mp.json")
-                        if port is None or port == 0:
-                            self.has_save = False
-                            self._build_options()
-                            self._refresh_menu_textures()
-                            return
-                        self.room_port = port
+                        # Cố định port là 5555, không cần load port random từ save nữa
                         try:
-                            self.game.network.start_host(self.room_port)
+                            self.game.network.start_host(port=5555)
                             self.sub_state = "waiting"
                             self.is_continue = True
                         except OSError:
                             self.connect_error = True
+                            
                     elif selected == "Tạo mới":
-                        self.room_port = random.randint(10000, 65000)
+                        # Khởi tạo máy chủ với port cố định 5555
                         try:
-                            self.game.network.start_host(self.room_port)
+                            self.game.network.start_host(port=5555)
                             self.sub_state = "waiting"
                             self.is_continue = False
                         except OSError:
                             self.connect_error = True
+                            
                     elif selected == "Tham gia":
                         self.sub_state = "joining"
                         self.input_text = ""
@@ -199,10 +196,13 @@ class LobbyState:
                 if scancode == sdl2.SDL_SCANCODE_BACKSPACE:
                     self.input_text = self.input_text[:-1]
                 elif scancode == sdl2.SDL_SCANCODE_RETURN:
-                    if len(self.input_text) == 5 and self.input_text.isdigit():
-                        port = int(self.input_text)
-                        # Kết nối đến localhost (có thể thay bằng IP host nếu cần)
-                        self.game.network.connect_to_host("127.0.0.1", port)
+                    # Kiểm tra chuỗi nhập vào (Mã phòng có thể là 4 hoặc 5 số tùy IP)
+                    if len(self.input_text) >= 4 and self.input_text.isdigit():
+                        # Dịch ngược mã 5 số thành IP mạng LAN
+                        target_ip = self.game.network.decode_room_code(self.input_text)
+                        
+                        # Kết nối thẳng tới IP đó qua port 5555
+                        self.game.network.connect_to_host(target_ip, port=5555)
                         self.sub_state = "connecting"
                         self.connect_error = False
                     else:
@@ -323,7 +323,9 @@ class LobbyState:
             if self.game.network.is_host:
                 if not self.game.network.connected:
                     self._draw_text_simple(renderer, "ĐANG TẠO PHÒNG...", 0, 200, (255,215,0), center_x=True)
-                    self._draw_text_simple(renderer, f"Mã phòng: {self.room_port}", 0, 300, (255,255,255), center_x=True)
+                    # GỌI MÃ PHÒNG LÊN MÀN HÌNH ĐỂ HOST ĐỌC CHO CLIENT NHẬP
+                    room_code = self.game.network.get_room_code()
+                    self._draw_text_simple(renderer, f"Mã phòng: {room_code}", 0, 300, (255,255,255), center_x=True)
                     self._draw_text_simple(renderer, "Nhấn ESC để hủy", 0, 500, (150,150,150), center_x=True)
                 else:
                     self._draw_text_simple(renderer, "CÔNG CHÚA ĐÃ KẾT NỐI!", 0, 300, (0,255,0), center_x=True)

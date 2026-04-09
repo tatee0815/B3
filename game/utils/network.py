@@ -10,22 +10,48 @@ class NetworkManager:
         self.client_address = None
         self.host_address = None
         self.connected = False
+        # Tự động lấy IP Local khi khởi tạo mạng
         self.local_ip = self.get_local_ip()
 
     def get_local_ip(self):
         """Hàm tự động quét và lấy địa chỉ IPv4 LAN của máy hiện tại"""
         try:
-            # Mở một socket UDP ảo kết nối đến 1 IP public (Google DNS).
-            # Lưu ý: Không có dữ liệu nào thực sự được gửi đi, 
-            # nó chỉ ép hệ điều hành báo xem đang dùng Card mạng (Wifi/LAN) nào để ra ngoài.
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("8.8.8.8", 80))
             ip = s.getsockname()[0]
             s.close()
             return ip
         except Exception:
-            # Đề phòng máy hoàn toàn không có kết nối mạng nào
             return "127.0.0.1"
+
+    def get_room_code(self):
+        """Tạo mã phòng 4-5 số từ IP của Host"""
+        if not self.local_ip or self.local_ip == "127.0.0.1":
+            return "12345" # Mã đặc biệt nếu chơi trên cùng 1 máy (không có mạng LAN)
+            
+        parts = self.local_ip.split('.')
+        if len(parts) == 4:
+            # Lấy 2 cụm cuối của IP gộp lại thành 1 số
+            code = int(parts[2]) * 256 + int(parts[3])
+            return str(code).zfill(4) 
+        return "12345"
+
+    def decode_room_code(self, code_str):
+        """Dịch ngược mã phòng thành IP hoàn chỉnh"""
+        if code_str == "12345":
+            return "127.0.0.1" # Dịch ngược lại về localhost nếu dùng mã test
+            
+        try:
+            code = int(code_str)
+            parts = self.local_ip.split('.')
+            if len(parts) == 4:
+                prefix = f"{parts[0]}.{parts[1]}." 
+                p3 = code // 256
+                p4 = code % 256
+                return f"{prefix}{p3}.{p4}"
+        except ValueError:
+            pass
+        return "255.255.255.255" # Trả về IP lỗi nếu mã bậy bạ
 
     def close(self):
         """Đóng socket cũ và tạo socket mới, reset trạng thái"""
@@ -42,19 +68,17 @@ class NetworkManager:
 
     def start_host(self, port=5555):
         if not (1 <= port <= 65535):
-            print(f"[Host] Port {port} không hợp lệ, dùng 5555")
             port = 5555
-        self.close()  # Đảm bảo socket sạch
+        self.close()
         try:
-            # 0.0.0.0 nghĩa là lắng nghe trên MỌI card mạng (Wifi, LAN dây, Localhost)
             self.sock.bind(('0.0.0.0', port))
             self.is_host = True
             print("="*40)
-            print(f"[Host] Đã mở server thành công trên port {port}")
-            print(f"[Host] BẢO BẠN CỦA BẠN NHẬP IP NÀY VÀO: {self.local_ip}")
+            print(f"[Host] Đã mở server trên IP: {self.local_ip} | Port: {port}")
+            print(f"[Host] MÃ PHÒNG: {self.get_room_code()}")
             print("="*40)
         except OSError as e:
-            print(f"[Host] Lỗi mở port {port}: {e}")
+            print(f"[Host] Lỗi bind port {port}: {e}")
             raise
 
     def connect_to_host(self, ip, port=5555):
@@ -62,7 +86,7 @@ class NetworkManager:
         self.host_address = (ip, port)
         self.is_host = False
         self.send_data({"type": "handshake", "role": "princess"})
-        print(f"[Client] Kết nối tới {ip}:{port}")
+        print(f"[Client] Đang kết nối tới {ip}:{port}")
 
     def send_data(self, data):
         try:
@@ -87,26 +111,23 @@ class NetworkManager:
                     if self.is_host and not self.connected:
                         self.client_address = addr
                         self.connected = True
-                        print(f"[Host] Máy khách (Princess) đã kết nối từ {addr}")
+                        print(f"[Host] Công Chúa đã kết nối từ {addr}")
                         self.send_data({"type": "handshake_ack"})
-                    continue # Đã xử lý nội bộ, không cần trả về cho game state
+                    continue 
 
                 elif packet.get("type") == "handshake_ack":
                     if not self.is_host and not self.connected:
                         self.connected = True
-                        print("[Client] Đã kết nối thành công tới Host (Knight)!")
+                        print("[Client] Đã kết nối thành công tới Hiệp Sĩ!")
                     continue
                     
-                # --- ĐƯA GÓI TIN GAME VÀO DANH SÁCH ---
                 packets.append(packet)
 
             except BlockingIOError:
-                # Không còn tín hiệu nào trong buffer nữa, thoát vòng lặp
                 break 
             except json.JSONDecodeError:
                 break
-            except Exception as e:
-                # Bỏ qua các lỗi mạng vụn vặt để game không bị crash
+            except Exception:
                 break
                 
         return packets
