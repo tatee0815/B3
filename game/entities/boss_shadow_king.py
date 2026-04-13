@@ -8,9 +8,9 @@ from game.utils.assets import AssetManager
 
 BOSS_QUOTES = {
     "hit_head": [
-        "KHÔNG! Điểm (G) yếu của ta!", "Ngươi gan lắm!", "YAMETE ??!!!"
+        "KHÔNG! Điểm yếu của ta!", "Ngươi gan lắm!", "YAMETE ??!!!"
     ],
-    "hit_body": ["Ta có khiên!!", "Ngươi quá yếu!", "U i i a a", "Ngươi nên nhắm vào đầu"],
+    "hit_body": ["Ta có khiên!!", "Ngươi quá yếu!", "Chưa tày đâu!"],
     "slash_warn": ["TA SẼ XÉ XÁC NGƯƠI!"], 
     "fire_warn": ["HỎA CẦU BÓNG TỐI!"],     
     "lightning_warn": ["THIÊN LÔI PHẠT!"],
@@ -439,7 +439,24 @@ class BossShadowKing(Enemy):
             })
         
         self.game.trigger_slowmo(duration=3.5, strength=0.3)
-        self.spawn_exit_platform()
+        
+        if self.game.game_mode == "multi":
+            self.spawn_multi_portal()
+        else:
+            self.spawn_exit_platform()
+
+    def spawn_multi_portal(self):
+        """Triệu hồi cổng kết thúc (End Portal) cho chế độ Multiplayer"""
+        p_x, p_y = 1100, 350
+        level = self.game.states["playing"].level
+        try:
+            from game.objects.portal import EndPortal
+            portal = EndPortal(self.game, p_x, p_y)
+            # Quan trọng: Đánh dấu đây là cổng kết thúc game để logic in playing.py nhận diện
+            portal.is_game_end_multi = True 
+            level.entities.append(portal)
+        except ImportError:
+            pass
 
     def decide_attack(self, player):
         attacks = ["slash", "fire"]

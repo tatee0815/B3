@@ -408,9 +408,16 @@ class Game:
             
         # --- KIỂM TRA MẤT KẾT NỐI (TIMEOUT) ---
         if self.game_mode == "multi" and self.network.connected:
-            # 5 giây không có dữ liệu -> Coi như mất kết nối
-            if time.time() - self.network.last_packet_time > 5.0:
-                print(f"[Network] Mất kết nối tới đối phương (Timeout 5s)")
+            now = time.time()
+            # 1. Gửi Nhịp tim (Heartbeat) định kỳ 1 giây/lần để duy trì kết nối
+            if not hasattr(self, "_last_heartbeat_send"): self._last_heartbeat_send = 0
+            if now - self._last_heartbeat_send > 1.0:
+                self.network.send_data({"type": "heartbeat"})
+                self._last_heartbeat_send = now
+
+            # 2. Kiểm tra Timeout (10 giây không có dữ liệu -> Coi như mất kết nối)
+            if now - self.network.last_packet_time > 10.0:
+                print(f"[Network] Mất kết nối tới đối phương (Timeout 10s)")
                 self.network.connected = False
                 
                 # NẾU LÀ CLIENT VÀ HOST MẤT MẠNG -> VĂNG MENU NGAY
@@ -433,15 +440,15 @@ class Game:
                 self.camera.update(player)
                 
     def reset_progress(self):
-        # 1. Xóa file save vật lý nếu chơi Multiplayer để đảm bảo reset spawn ngẫu nhiên
-        if self.game_mode == "multi":
-            save_path = "save_mp.json"
-            if os.path.exists(save_path):
-                try:
-                    os.remove(save_path)
-                    print(f"[Game] Đã xóa file save cũ: {save_path}")
-                except Exception as e:
-                    print(f"[Game] Lỗi khi xóa file save: {e}")
+        # 1. Xóa file save vật lý để đảm bảo cơ chế Permadeath (Chết là hết)
+        save_path = "save_sp.json" if self.game_mode == "single" else "save_mp.json"
+        
+        if os.path.exists(save_path):
+            try:
+                os.remove(save_path)
+                print(f"[Game] [Permadeath] Đã xóa file save: {save_path}")
+            except Exception as e:
+                print(f"[Game] Lỗi khi xóa file save: {e}")
 
         # 2. Khởi tạo lại dữ liệu progress trong bộ nhớ
         if self.game_mode == "multi":

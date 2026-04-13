@@ -3,18 +3,23 @@ from game.constants import COLORS
 from game.entities.base import Entity
 
 class Gate(Entity):
-    def __init__(self, game, x, y, w, h, gate_id):
+    def __init__(self, game, x, y, w, h, gate_id, init_open=False):
         super().__init__(game, x, y, w, h)
         self.gate_id = gate_id
-        self.is_open = False
+        self.is_open = init_open
+        self.solid = not self.is_open
         self.color = COLORS["brown"] if not self.is_open else COLORS["light_gray"]
-        self.solid = True
         self.z_index = 1
 
     def open(self):
         self.is_open = True
         self.solid = False
         self.color = COLORS["light_gray"]
+
+    def close(self):
+        self.is_open = False
+        self.solid = True
+        self.color = COLORS["brown"]
 
     def update(self, delta_time, level):
         pass

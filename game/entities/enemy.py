@@ -286,16 +286,12 @@ class Goblin(Enemy):
             self.vel_x = self.patrol_speed * self.direction
 
         # --- GÂY SÁT THƯƠNG KHI CHẠM ---
-        # Kiểm tra va chạm với bất kỳ player nào ở gần
-        playing_state = self.game.states.get("playing")
-        targets = [self.game.player]
-        if playing_state and getattr(playing_state, "remote_player", None):
-            targets.append(playing_state.remote_player)
-            
-        for t in targets:
-            if t and t.alive and sdl2.SDL_HasIntersection(self.rect, t.rect):
+        # QUAN TRỌNG: Chỉ kiểm tra va chạm với Local Player (máy ai nấy chịu)
+        # Điều này ngăn chặn việc trừ mạng kép trong Multiplayer
+        t = self.game.player
+        if t and t.alive and not getattr(t, "is_respawning", False):
+            if sdl2.SDL_HasIntersection(self.rect, t.rect):
                 t.take_damage(self.damage, self.direction)
-                break # Mỗi frame chỉ gây dam 1 lần cho 1 người
 
     def update(self, delta_time, level):
         if self.is_dead_body:

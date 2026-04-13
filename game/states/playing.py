@@ -1,6 +1,7 @@
 import sdl2
 from game.entities.projectile import Projectile
 from game.level.level import Level
+from game.objects.platform import MovingPlatform
 from game.objects.portal import EndPortal
 
 class PlayingState:
@@ -164,12 +165,23 @@ class PlayingState:
                 self.remote_player.facing_right = packet.get("facing", True)
                 self.remote_player.hp = packet.get("hp", self.remote_player.hp)
                 self.remote_player.mana = packet.get("mana", getattr(self.remote_player, "mana", 50))
+                self.remote_player.lives = packet.get("lives", getattr(self.remote_player, "lives", 3))
                 # Cập nhật checkpoint nếu máy kia báo có checkpoint mới
                 new_cp = packet.get("checkpoint")
                 if new_cp:
                     self.remote_player.checkpoint_pos = new_cp
                 
-                self.remote_player.is_using_skill = packet.get("is_using_skill", False)
+                
+                new_is_using_skill = packet.get("is_using_skill", False)
+                # Kích hoạt hiệu ứng visual trên máy khách khi đối phương dùng chiêu
+                if new_is_using_skill and not getattr(self.remote_player, "is_using_skill", False):
+                    if hasattr(self.remote_player, "aoe_visual_timer"):
+                        self.remote_player.aoe_visual_timer = 0.5
+                    elif self.remote_player.role == "knight":
+                        # Hiệu ứng Knight nếu cần (hiện tại Knight dùng logic khác)
+                        pass
+                
+                self.remote_player.is_using_skill = new_is_using_skill
                 
                 # Đồng bộ trạng thái chém thường
                 is_attacking = packet.get("is_attacking", False)
@@ -243,13 +255,20 @@ class PlayingState:
                 new_level = packet["level"]
                 self.game.player_progress["current_level"] = new_level
                 self.is_initialized = False
+                
+                # RESET CHECKPOINT TIẾP THEO (DÀNH CHO CLIENT)
+                if self.player: 
+                    self.player.checkpoint_pos = None
+                    if "checkpoint" in self.player.progress:
+                        self.player.progress["checkpoint"] = None
+                self.game.player_progress["checkpoint"] = None
+                
                 self.on_enter()
                 
             elif ptype == "portal_ready":
                 self.remote_at_portal = packet.get("ready", False)
 
             elif ptype == "spawn_projectile":
-                from game.entities.projectile import Projectile
                 px = packet.get("x")
                 py = packet.get("y")
                 pdir = packet.get("dir")
@@ -271,6 +290,21 @@ class PlayingState:
                         if enemy.alive:
                             enemy.take_damage(dmg, knockback_dir=k_dir)
                             print(f"[Network] Remote player hit enemy {idx} for {dmg} damage")
+            
+            elif ptype == "button_pressed":
+                btn_id = packet.get("btn_id")
+                from game.objects.button import Button
+                for entity in self.level.entities:
+                    if isinstance(entity, Button):
+                        if f"{entity.rect.x}_{entity.rect.y}" == btn_id:
+                            # Kích hoạt nút (truyền player=None để tránh gửi gói tin ngược lại)
+                            entity.on_interact(None)
+                            print(f"[Network] Remote player pressed button {btn_id}")
+                            break
+                
+            elif ptype == "game_over":
+                print("[Network] Trận đấu kết thúc (Đối phương hết mạng)")
+                self.game.change_state("intro", mode="multi_fail")
 
     def update(self, delta_time):
         if not self.player or not self.level:
@@ -301,13 +335,12 @@ class PlayingState:
             self.remote_player.rect.x = int(self.remote_player.pos_x)
             self.remote_player.rect.y = int(self.remote_player.pos_y)
             
-            # Cập nhật frame hoạt ảnh cho Remote Player
-            if hasattr(self.remote_player, 'update_animation'):
-                self.remote_player.update_animation(delta_time)
+            # Cập nhật timers và hoạt ảnh cho Remote Player 
+            # (Phần vật lý vẫn được nội suy bên dưới)
+            self.remote_player.update(delta_time, self.level)
             
 
         # 4. Kiểm tra va chạm với Portal (Gom lại thành 1 vòng lặp duy nhất)
-        from game.objects.portal import EndPortal
         for entity in self.level.entities:
             if isinstance(entity, EndPortal):
                 if sdl2.SDL_HasIntersection(self.player.rect, entity.rect):
@@ -336,6 +369,7 @@ class PlayingState:
                     "facing": self.local_player.facing_right,
                     "hp": self.local_player.hp,
                     "mana": self.local_player.mana,
+                    "lives": self.local_player.lives,
                     "checkpoint": self.local_player.checkpoint_pos,
                     "is_using_skill": getattr(self.local_player, "is_using_skill", False),
                     "is_attacking": self.local_player.is_attacking
@@ -390,7 +424,6 @@ class PlayingState:
             self.game.camera.update(self.player)
 
         # 4. Va chạm Projectile (Đạn/Kỹ năng) với Enemy
-        from game.entities.projectile import Projectile
         projectiles = [e for e in self.level.entities if isinstance(e, Projectile)]
         for proj in projectiles[:]:
             if not proj.alive:
@@ -442,8 +475,16 @@ class PlayingState:
             new_level = "level3_mountain"
         elif current_lv == "level3_mountain":
             new_level = "boss_arena"
+        elif current_lv == "2p_level1_bodystone":
+            new_level = "2p_level2_heartstone"
+        elif current_lv == "2p_level2_heartstone":
+            new_level = "2p_level3_soulstone"
+        elif current_lv == "2p_level3_soulstone":
+            new_level = "2p_boss_arena"
         else:
-            self.game.change_state("win")
+            # Nếu hết màn (Thắng boss) -> Chuyển sang Cutscene thắng của Multiplayer
+            # Sau đoạn cắt cảnh này next_state sẽ là "win" (WinState)
+            self.game.change_state("intro", mode="multi_win")
             return
 
         self.game.player_progress["current_level"] = new_level
@@ -452,7 +493,18 @@ class PlayingState:
             self.game.network.send_data({"type": "level_change", "level": new_level})
         
         self.is_initialized = False
-        if self.player: self.player.checkpoint_pos = None
+        
+        # XỬ LÝ SPAWN: Xóa sạch checkpoint cũ để ép spawn tại start màn mới
+        if self.player: 
+            self.player.checkpoint_pos = None
+            if "checkpoint" in self.player.progress:
+                self.player.progress["checkpoint"] = None
+        if self.remote_player:
+            self.remote_player.checkpoint_pos = None
+        
+        # Cập nhật trong game progress chung
+        self.game.player_progress["checkpoint"] = None
+        
         self.game.save_current_game() 
         self.game.change_state("playing", reset=False)
 

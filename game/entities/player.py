@@ -27,6 +27,8 @@ class Player(Entity):
         # Chỉ số cơ bản (Khởi tạo từ progress hiện tại)
         self.hp = self.progress.get("hp", PLAYER_MAX_HP)
         self.mana = self.progress.get("mana", 50)
+        from game.constants import MAX_LIVES
+        self.lives = self.progress.get("lives", MAX_LIVES)
         self.mana_warning_timer = 0
         self.mana_warning_duration = 1.0  # Thời gian hiển thị cảnh báo thiếu mana (giây)
 
@@ -89,7 +91,7 @@ class Player(Entity):
         self.anim_timer = 0
         self.anim_speed = 0.1 # Tốc độ chuyển frame (giây)
 
-        self.debug_mode = True # Bật lại khung đỏ hitbox theo yêu cầu
+        self.debug_mode = False # Bật lại khung đỏ hitbox theo yêu cầu
         self.is_god_mode = False
 
     def handle_input(self, event):
@@ -228,7 +230,7 @@ class Player(Entity):
         # 1. Cập nhật frame hoạt ảnh chính của sprite
         self.anim_timer += delta_time
         current_anim_speed = 0.12 
-        if self.state in ["skill", "princess_protection"]:
+        if self.state in ["skill", "attack2"]:
             current_anim_speed = 0.05
         elif self.state == "attack":
             current_anim_speed = 0.08
@@ -294,15 +296,23 @@ class Player(Entity):
                     return
 
     def update(self, delta_time, level):
-        # --- 1. CẬP NHẬT CÁC BỘ ĐẾM THỜI GIAN ---
+        # --- 1. CẬP NHẬT CÁC BỘ ĐẾM THỜI GIAN (Dùng cho cả Local và Remote) ---
         if self.dash_cooldown > 0: self.dash_cooldown -= delta_time
         if self.recoil_timer > 0: self.recoil_timer -= delta_time
         if self.attack_cooldown_timer > 0: self.attack_cooldown_timer -= delta_time
         if self.mana_warning_timer > 0: self.mana_warning_timer -= delta_time
-        if self.invincible_time > 0: self.invincible_time -= delta_time
+        if self.invincible_time > 0: 
+            self.invincible_time -= delta_time
+            if self.invincible_time < 0: self.invincible_time = 0
+            
         if self.speech_timer > 0: self.speech_timer -= delta_time
+
         # --- 2. LOGIC HOẠT ẢNH ---
         self.update_animation(delta_time)
+
+        # NẾU LÀ REMOTE PLAYER -> DỪNG TẠI ĐÂY (Vật lý sẽ được nội suy ở PlayingState)
+        if getattr(self, "is_remote", False):
+            return
 
         # --- 3. LOGIC TẤN CÔNG (ACTIVE FRAMES) ---
         if self.is_attacking:
@@ -389,9 +399,14 @@ class Player(Entity):
                         self.on_ground = True # Đứng trên platform cũng là on_ground
                         break
 
-                # Sau đó mới cập nhật rect thực tế
-                self.rect.x = int(self.pos_x)
-                self.rect.y = int(self.pos_y)
+            # --- 5. GIỚI HẠN BIÊN THẾ GIỚI (WORLD BOUNDARIES) ---
+            # Ngăn nhân vật đi quá biên trái (0) hoặc quá biên phải (map width)
+            # Cho phép rớt hố một đoạn nhỏ trước khi chết tự nhiên
+            self.pos_x = max(0.0, min(self.pos_x, float(level.pixel_width - self.rect.w)))
+            
+            # Cập nhật rect thực tế sau khi kẹp biên
+            self.rect.x = int(self.pos_x)
+            self.rect.y = int(self.pos_y)
 
         # --- 5. KIỂM TRA ĐIỀU KIỆN SỐNG CÒN ---
         # Kiểm tra rơi vực
@@ -466,12 +481,23 @@ class Player(Entity):
     
     def handle_death(self):
         """Xử lý tập trung khi nhân vật chết"""
-        print("Nhân vật đã chết!")
+        print(f"Nhân vật {self.role} đã chết!")
         
-        if hasattr(self.game, 'lives'):
-            self.game.lives -= 1
-            self.game.player_progress["lives"] = self.game.lives
-            if self.game.lives <= 0:
+        # Mạng sống độc lập cho từng người chơi (Theo yêu cầu: HP và Lives là dùng riêng)
+        self.lives -= 1
+        
+        # Cập nhật vào progress để lưu trữ
+        if "players" in self.game.player_progress and self.role in self.game.player_progress["players"]:
+            self.game.player_progress["players"][self.role]["lives"] = self.lives
+        else:
+            self.game.player_progress["lives"] = self.lives
+
+        if self.lives <= 0:
+            # ĐỒNG BỘ GAME OVER QUA MẠNG
+            if self.game.game_mode == "multi":
+                self.game.network.send_data({"type": "game_over"})
+                self.game.change_state("intro", mode="multi_fail")
+            else:
                 self.game.change_state("fail")
         # Hồi sinh nếu còn mạng
         self.is_respawning = True
@@ -487,7 +513,7 @@ class Player(Entity):
 
     def _update_state(self):
         if self.is_attacking: 
-            if self.state not in ["attack", "skill", "princess_protection"]:
+            if self.state not in ["attack", "skill", "attack2"]:
                 self.state = "attack"
             return
         elif self.is_dashing: self.state = "dash"
@@ -515,9 +541,10 @@ class Player(Entity):
         self.pos_x = float(self.rect.x) 
         self.pos_y = float(self.rect.y)
 
-        # 2. QUAN TRỌNG: Triệt tiêu toàn bộ vận tốc cũ
+        # 2. QUAN TRỌNG: Triệt tiêu toàn bộ vận tốc cũ và trạng thái bất tử
         self.vel_x = 0
         self.vel_y = 0
+        self.invincible_time = 0
         
         # 3. Reset các trạng thái điều khiển
         self.on_ground = False
@@ -582,7 +609,7 @@ class Player(Entity):
                 m_draw_y = int(self.attack_rect.y - camera.y)
                 
                 m_dstrect = sdl2.SDL_Rect(m_draw_x, m_draw_y, 62, 32) 
-                m_dstrect.y -= 18
+                m_dstrect.y -= 12
 
                 if not self.facing_right:
                     m_dstrect.x -= 0

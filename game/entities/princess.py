@@ -4,6 +4,7 @@ from game.constants import PLAYER_SPEED, GRAVITY, SKILL_A_COST, MANA_MAX, PLAYER
 from game.utils.assets import AssetManager
 from .player import Player
 from .projectile import Projectile
+from .enemy import EnemyFireball
 
 class Princess(Player):
     def __init__(self, game):
@@ -22,12 +23,15 @@ class Princess(Player):
         self.TELEPORT_COOLDOWN_TIME = 1.5
         self.aoe_cooldown = 0.0
         self.AOE_COOLDOWN_TIME = 2.0
-        self.AOE_DAMAGE = 20
+        self.AOE_DAMAGE = 30
         self.AOE_RADIUS = 100  # pixel
         
         # Teleport ngắm
         self.is_teleport_aiming = False
         self.teleport_target = None
+        
+        # Hiệu ứng AOE
+        self.aoe_visual_timer = 0.0
 
     def handle_input(self, event):
         """Ghi đè để thêm phím teleport (C) và AOE (A)"""
@@ -68,83 +72,87 @@ class Princess(Player):
 
     def calculate_teleport_target(self, level):
         """
-        Tìm kiếm vị trí Ground an toàn trong bán kính 250px phía trước mặt (quét 180 độ).
-        Ưu tiên các vị trí xa hơn hoặc bục cao.
+        Tìm kiếm bục nhảy (Platform) gần nhất ở phía trước mặt.
+        - Không giới hạn khoảng cách.
+        - Có thể nhìn xuyên qua tiles_2.
+        - Bị chặn bởi tiles_1.
         """
         start_x = self.rect.x + self.rect.w // 2
         start_y = self.rect.y + self.rect.h // 2
-        max_range = 250
         
         best_target = None
-        best_score = -99999
+        min_dist = float('inf')
         
-        # Hướng hiện tại: 1 nếu quay phải, -1 nếu quay trái
-        look_dir = 1 if self.facing_right else -1
+        # --- LẤY GIỚI HẠN MÀN HÌNH HIỆN TẠI ---
+        cam = self.game.camera
+        screen_rect = sdl2.SDL_Rect(int(cam.x), int(cam.y), self.game.logical_width, self.game.logical_height)
         
-        # Quét theo góc từ -45 đến 45 độ (tổng 90 độ phía trước mặt)
-        # Bước quét 5 độ một lần để mịn hơn
-        for angle_deg in range(-45, 46, 5):
-            # Chuyển độ sang radian và tính vector hướng
-            angle_rad = math.radians(angle_deg)
-            # Nếu quay trái, ta cộng thêm 180 độ (pi radian)
-            if not self.facing_right:
-                angle_rad += math.pi
-            
-            # Quét dọc theo tia từ tâm ra ngoài theo từng nấc 16px (nửa tile)
-            for dist in range(32, max_range + 1, 16):
-                tx = start_x + math.cos(angle_rad) * dist
-                ty = start_y + math.sin(angle_rad) * dist
-                
-                # Kiểm tra tile tại (tx, ty)
-                col, row = int(tx // level.tile_size), int(ty // level.tile_size)
-                
-                if col < 0 or col >= level.width or row < 0 or row >= level.height:
-                    break # Ra khỏi biên map thì dừng tia này
-                
-                # Nếu tia quét chạm gạch rắn
-                is_solid = level.tiles[row][col] == 1 # Chỉ gạch type 1 là tường gạch rắn
-                
-                if is_solid:
-                    # TRƯỜNG HỢP CHẠM TƯỜNG: Dừng quét tia này ngay lập tức để tránh xuyên tường
-                    break
+        for plat in level.platforms:
+            # 1. Kiểm tra giới hạn bục trong màn hình (MỚI)
+            if not sdl2.SDL_HasIntersection(plat.rect, screen_rect):
+                continue
 
-                # Kiểm tra nếu là platform hoặc điểm đứng được (tile type 2)
-                is_ground = level.tiles[row][col] == 2
-                plat_y = None
-                for plat in level.platforms:
-                    if tx >= plat.rect.x and tx <= plat.rect.x + plat.rect.w:
-                        if abs(ty - plat.rect.y) < 16:
-                            plat_y = plat.rect.y
-                            break
+            # Lấy tâm bục nhảy (điểm Princess sẽ đáp xuống)
+            plat_target_x = plat.rect.x + plat.rect.w // 2
+            plat_target_y = plat.rect.y
+            
+            # 1. Kiểm tra hướng (Phía trước mặt)
+            is_in_front = False
+            if self.facing_right:
+                # Nếu nhìn phải, bục phải có phần nằm bên phải tâm Princess
+                if plat.rect.x + plat.rect.w > start_x: 
+                    is_in_front = True
+            else:
+                # Nếu nhìn trái, bục phải có phần nằm bên trái tâm Princess
+                if plat.rect.x < start_x:
+                    is_in_front = True
+            
+            if not is_in_front:
+                continue
+            
+            # Tính khoảng cách trực tiếp (Chim bay)
+            dx = plat_target_x - start_x
+            dy = plat_target_y - start_y
+            dist = math.hypot(dx, dy)
+            
+            # --- LOẠI TRỪ NỀN TẢNG ĐANG ĐỨNG (QUAN TRỌNG) ---
+            # Nếu Princess đang đứng trên bục này, bỏ qua để tránh tele tại chỗ
+            is_on_plat_x = (self.rect.x + self.rect.w > plat.rect.x) and (self.rect.x < plat.rect.x + plat.rect.w)
+            is_touching_top = abs((self.rect.y + self.rect.h) - plat.rect.y) < 5
+            if is_on_plat_x and is_touching_top:
+                continue
+
+            # Bỏ qua nếu bục quá gần (Dưới 32px)
+            if dist < 32:
+                continue
                 
-                if is_ground or plat_y is not None:
-                    # Tìm thấy mặt đất! Xác định cao độ đích (trên mặt đất)
-                    ground_y = (row * level.tile_size if is_ground else plat_y)
-                    target_y = ground_y - self.rect.h
-                    target_x = int(tx - self.rect.w // 2)
-                    
-                    # KIỂM TRA KHÔNG GIAN CHO NHÂN VẬT (Phải trống 2 ô trên đầu)
-                    t_col = int(target_x // level.tile_size)
-                    t_row = int(target_y // level.tile_size)
-                    
-                    space_ok = True
-                    if t_row < 0 or t_row >= level.height: space_ok = False
-                    else:
-                        # Kiểm tra ô chân và ô đầu phải TRỐNG
-                        if level.tiles[t_row][t_col] in (1, 2): space_ok = False
-                        if t_row > 0 and level.tiles[t_row-1][t_col] in (1, 2): space_ok = False
-                    
-                    if space_ok:
-                        # Tính điểm ưu tiên: xa hơn là tốt
-                        score = dist
-                        if target_y < start_y - 32: score += 50 # Ưu tiên bục cao
-                        
-                        if score > best_score:
-                            best_score = score
-                            best_target = (target_x, int(target_y))
-                        
-                        # Đã tìm thấy điểm đứng hợp lệ trên tia này, ngừng tiến xa hơn trên chính tia này
+            # 3. Kiểm tra Tầm nhìn (Line of Sight) đối với tiles_1
+            blocked = False
+            # Quét dọc theo đường thẳng nối từ mắt Princess đến bục
+            # Sử dụng bước nhảy 16px (nửa tile) để cân bằng chính xác và hiệu năng
+            num_steps = int(max(1, dist / 16))
+            for i in range(1, num_steps):
+                check_x = start_x + (dx * i / num_steps)
+                check_y = start_y + (dy * i / num_steps)
+                
+                col, row = int(check_x // level.tile_size), int(check_y // level.tile_size)
+                if 0 <= col < level.width and 0 <= row < level.height:
+                    # Nếu gặp tiles_1 (tường cứng) -> Bị chặn
+                    if level.tiles[row][col] == 1:
+                        blocked = True
                         break
+                    # Lưu ý: tiles_2 (mặt đất) không chặn tầm nhìn theo yêu cầu
+            
+            if blocked:
+                continue
+                
+            # 4. Chọn bục gần nhất
+            if dist < min_dist:
+                min_dist = dist
+                # Tọa độ đích (căn giữa player trên bục)
+                target_x = int(plat_target_x - self.rect.w // 2)
+                target_y = int(plat.rect.y - self.rect.h)
+                best_target = (target_x, target_y)
         
         return best_target
 
@@ -224,6 +232,10 @@ class Princess(Player):
         level = self.game.states["playing"].level
         center_x = self.rect.x + self.rect.w // 2
         center_y = self.rect.y + self.rect.h // 2
+        
+        # Bật hiệu ứng hình ảnh
+        self.aoe_visual_timer = 0.5
+        
         for enemy in level.enemies[:]:
             if not enemy.alive:
                 continue
@@ -238,7 +250,6 @@ class Princess(Player):
 
                 # GỬI TÍN HIỆU VỀ HOST NẾU LÀ CLIENT
                 if self.game.game_mode == "multi" and not self.game.network.is_host:
-                    # Tìm index của quái (Cần dùng enumerate ở vòng lặp ngoài hoặc .index)
                     try:
                         e_idx = level.enemies.index(enemy)
                         self.game.network.send_data({
@@ -249,15 +260,25 @@ class Princess(Player):
                         })
                     except ValueError:
                         pass
+        
+        # 3. Hủy toàn bộ đạn địch trong phạm vi AOE
+        for entity in level.entities[:]:
+            if isinstance(entity, EnemyFireball) and entity.alive:
+                e_center_x = entity.rect.x + entity.rect.w // 2
+                e_center_y = entity.rect.y + entity.rect.h // 2
+                dx = e_center_x - center_x
+                dy = e_center_y - center_y
+                if math.hypot(dx, dy) <= self.AOE_RADIUS:
+                    entity.alive = False
+                    # Tạo hiệu ứng nhỏ nếu cần (tùy chỉnh sau)
         # Hiệu ứng
-        self.show_speech("AOE!")
+        self.show_speech("BOOM!")
 
     def update(self, delta_time, level):
         # Cập nhật cooldown
-        if self.teleport_cooldown > 0:
-            self.teleport_cooldown -= delta_time
-        if self.aoe_cooldown > 0:
-            self.aoe_cooldown -= delta_time
+        if self.teleport_cooldown > 0: self.teleport_cooldown -= delta_time
+        if self.aoe_cooldown > 0: self.aoe_cooldown -= delta_time
+        if self.aoe_visual_timer > 0: self.aoe_visual_timer -= delta_time
             
         if self.is_teleport_aiming:
             new_target = self.calculate_teleport_target(level)
@@ -273,6 +294,23 @@ class Princess(Player):
             self.has_double_jump = True
 
     def render(self, renderer, camera):
+        # Hiệu ứng AOE (Vòng tròn hồng lan tỏa)
+        if self.aoe_visual_timer > 0:
+            progress = (0.5 - self.aoe_visual_timer) / 0.5
+            current_radius = int(self.AOE_RADIUS * progress)
+            center_x = int(self.rect.x + self.rect.w // 2 - camera.x)
+            center_y = int(self.rect.y + self.rect.h // 2 - camera.y)
+            
+            # Vẽ hình tròn đơn giản (SDL RenderDraw có giới hạn, ta có thể vẽ nhiều rect hẹp)
+            sdl2.SDL_SetRenderDrawColor(renderer, 255, 100, 200, int(255 * (1 - progress)))
+            for angle in range(0, 360, 5):
+                rad = math.radians(angle)
+                tx = int(center_x + math.cos(rad) * current_radius)
+                ty = int(center_y + math.sin(rad) * current_radius)
+                sdl2.SDL_RenderDrawPoint(renderer, tx, ty)
+                sdl2.SDL_RenderDrawPoint(renderer, tx+1, ty) # Làm dày tí
+                sdl2.SDL_RenderDrawPoint(renderer, tx, ty+1)
+
         # Nếu đang ngắm tele, vẽ bóng mờ trước
         if self.is_teleport_aiming and self.teleport_target:
             tgt_x, tgt_y = self.teleport_target

@@ -3,12 +3,13 @@ import sdl2.sdlttf as ttf
 from game.constants import COLORS
 
 class Chest:
-    def __init__(self, game, x, y, w=40, h=32, unlock_skill=None, custom_name=None):
+    def __init__(self, game, x, y, w=40, h=32, unlock_skill=None, custom_name=None, role_restriction=None):
         self.game = game
         self.rect = sdl2.SDL_Rect(x, y, w, h)
         self.opened = False
         self.unlock_skill = unlock_skill  
         self.custom_name = custom_name # Tên hiển thị tùy chỉnh (e.g. "Bodystone")
+        self.role_restriction = role_restriction # "knight", "princess", hoặc None
         self.z_index = 1
         self.alive = True
         self.show_prompt = False # Cờ hiển thị chữ "Nhấn E"
@@ -17,22 +18,39 @@ class Chest:
         self.message_duration = 5.0  
         self.unlocked_text = ""
 
-        # Phân biệt màu sắc rương theo Skill
+        # Phân biệt màu sắc rương theo Skill và Vai trò
         if self.unlock_skill == "dash":
             self.chest_color = (100, 200, 255) # Xanh lướt (Dash)
         elif self.unlock_skill == "skill_a":
             self.chest_color = (255, 100, 100) # Đỏ (Bắn chưởng)
         elif self.unlock_skill == "double_jump":
             self.chest_color = (100, 255, 100) # Xanh lá (Nhảy kép)
+        elif self.role_restriction == "princess":
+            self.chest_color = (255, 150, 200) # Hồng cho Princess
+        elif self.role_restriction == "knight":
+            self.chest_color = (0, 255, 255)   # Cyan cho Knight
         else:
             self.chest_color = COLORS["orange"] # Mặc định
 
     def on_interact(self, player):
         if not self.opened:
+            # KIỂM TRA VAI TRÒ
+            if self.role_restriction and player.role != self.role_restriction:
+                role_name = "HIỆP SĨ" if self.role_restriction == "knight" else "CÔNG CHÚA"
+                player.show_speech(f"Chỉ dành cho {role_name}!", 2.0)
+                return
+
             self.opened = True
             self.show_prompt = False
             chest_id = f"{self.rect.x}_{self.rect.y}"
             
+            # Gửi gói tin mạng nếu là multiplayer
+            if self.game.game_mode == "multi":
+                self.game.network.send_data({
+                    "type": "chest_opened",
+                    "chest_id": chest_id
+                })
+
             # Sử dụng progress động của player (đã được cải cách ở lớp Player)
             progress = player.progress
             
@@ -60,7 +78,7 @@ class Chest:
                     skill_names = {
                         "dash": "LƯỚT (C)",
                         "skill_a": "BẮN CHƯỞNG (A)",
-                        "double_jump": "NHẬY KÉP (Z)",
+                        "double_jump": "NHẢY KÉP (Z)",
                         "teleport": "DỊCH CHUYỂN (C)",
                         "aoe": "KIẾM PHÁ (A)"
                     }
@@ -75,17 +93,26 @@ class Chest:
             self.message_timer -= delta_time
 
         if not self.opened and level:
-            player = level.game.states["playing"].player
-            if player:
+            # Kiểm tra cả local player và remote player trong multiplayer
+            playing_state = level.game.states["playing"]
+            players = [playing_state.local_player]
+            if playing_state.remote_player:
+                players.append(playing_state.remote_player)
+
+            self.show_prompt = False
+            for player in players:
+                if not player or getattr(player, "is_remote", False): 
+                    continue # Chỉ hiện prompt cho local player
+                
                 # Tính khoảng cách giữa Player và Rương
                 dist_x = abs(self.rect.x - player.rect.x)
                 dist_y = abs(self.rect.y - player.rect.y)
                 
-                # Nếu đứng cách rương dưới 60 pixel -> Hiện chữ
+                # Nếu đứng cách rương dưới 60 pixel -> Check vai trò trước khi hiện chữ
                 if dist_x < 60 and dist_y < 60:
-                    self.show_prompt = True
-                else:
-                    self.show_prompt = False
+                    if not self.role_restriction or player.role == self.role_restriction:
+                        self.show_prompt = True
+                        break
 
     def render(self, renderer, camera):
         color = COLORS["dark_gray"] if self.opened else self.chest_color
@@ -101,6 +128,16 @@ class Chest:
         
         sdl2.SDL_SetRenderDrawColor(renderer, 255, 215, 0, 255)
         sdl2.SDL_RenderDrawRect(renderer, draw_rect)
+
+        # Vẽ chỉ dấu vai trò nếu rương bị giới hạn (Viền dày hơn hoặc màu đặc biệt)
+        if not self.opened and self.role_restriction:
+            # Vẽ một viền nhỏ bên trong để báo hiệu vai trò
+            inner_rect = sdl2.SDL_Rect(draw_rect.x + 4, draw_rect.y + 4, draw_rect.w - 8, draw_rect.h - 8)
+            if self.role_restriction == "knight":
+                sdl2.SDL_SetRenderDrawColor(renderer, 0, 255, 255, 255) # Cyan
+            else:
+                sdl2.SDL_SetRenderDrawColor(renderer, 255, 100, 200, 255) # Pink
+            sdl2.SDL_RenderDrawRect(renderer, inner_rect)
 
         # Trổ tài vẽ chữ "Nhấn UP để mở" lơ lửng trên rương
         if self.show_prompt and not self.opened:

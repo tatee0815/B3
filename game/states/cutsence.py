@@ -38,6 +38,22 @@ class CutsceneState:
             self.title = "KẾT THÚC BẤT NGỜ"
             self.lines = ["Sau khi đánh bại trùm cuối và giải cứu công chúa", "Hóa ra cô ấy lại là phù thủy Aurora97", "Cảm ơn bạn đã trải nghiệm game!"]
             self.next_state = "win"
+        elif self.mode == "multi_win":
+            self.title = "HUYỀN THOẠI SONG HÀNH"
+            self.lines = [
+                "Sương rồng đơm lá đơm hoa, nước đông đầy trên cao nguyên đá...",
+                "Linh hồn của Công chúa đã được hàn gắn vĩnh viễn.",
+                "Từ giờ, vận mệnh của cả hai sẽ bước sang một chương mới!"
+            ]
+            self.next_state = "win"
+        elif self.mode == "multi_fail":
+            self.title = "ĐỊNH MỆNH TAN VỠ"
+            self.lines = [
+                "Sức mạnh đơn độc không thể chống lại bóng tối...",
+                "Khi một người ngã xuống, tất cả đều sụp đổ.",
+                "Hãy phối hợp tốt hơn và bảo vệ lẫn nhau ở kiếp sau nhé."
+            ]
+            self.next_state = "game_over"
         else: # fail
             self.title = "VƯƠNG QUỐC SỤP ĐỔ"
             self.lines = ["Anh hùng đã ngã xuống...", "Hy vọng cuối cùng đã tan biến.", "Hãy làm lại ở kiếp sau nhé"]
@@ -60,6 +76,10 @@ class CutsceneState:
             bg_path = "assets/backgrounds/cutscene_intro_2p.png"
         elif self.mode == "outro":
             bg_path = "assets/backgrounds/cutscene_outro.png"
+        elif self.mode == "multi_win":
+            bg_path = "assets/backgrounds/cutscence_outro_2p.png" # User typo preserved
+        elif self.mode == "multi_fail":
+            bg_path = "assets/backgrounds/cutscene_fail_2p.jpg"
         else:
             bg_path = "assets/backgrounds/cutscene_fail.png"
 
@@ -73,7 +93,7 @@ class CutsceneState:
             sdl2.SDL_FreeSurface(surf)
     
     def on_exit(self):
-        if self.mode in ["fail"]:
+        if self.mode in ["fail", "multi_fail"]:
             self.game.reset_progress()
 
     def handle_event(self, event):  

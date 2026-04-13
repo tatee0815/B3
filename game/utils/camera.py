@@ -21,6 +21,10 @@ class Camera:
         target_x = p_center_x - self.width // 2
         target_y = p_center_y - self.height // 2
         
+        # Sync viewport size to actual logical window
+        self.width = self.game.logical_width
+        self.height = self.game.logical_height
+
         playing_state = self.game.states.get("playing")
         if playing_state and playing_state.level:
             lvl = playing_state.level
@@ -29,8 +33,7 @@ class Camera:
             max_x = max(0, lvl.pixel_width - self.width)
             target_x = max(0, min(target_x, max_x))
             
-            # GIỚI HẠN TRỤC Y (Quan trọng để leo trèo)
-            # Nếu map cao hơn màn hình, max_y sẽ > 0
+            # GIỚI HẠN TRỤC Y
             max_y = max(0, lvl.pixel_height - self.height)
             target_y = max(0, min(target_y, max_y))
 
@@ -42,9 +45,17 @@ class Camera:
             move_x = (target_x - self.x) * self.smooth_factor
             move_y = (target_y - self.y) * self.smooth_factor
 
-            # Giới hạn mức dịch chuyển tối đa mỗi frame để tránh giật hình (ví dụ: 60px)
+            # Giới hạn mức dịch chuyển tối đa mỗi frame
             self.x += max(-60, min(60, move_x))
             self.y += max(-60, min(60, move_y))
+            
+        # CLAMP LẦN CUỐI ĐỂ ĐẢM BẢO KHÔNG TRÔI BIÊN
+        if playing_state and playing_state.level:
+            lvl = playing_state.level
+            max_x = max(0, lvl.pixel_width - self.width)
+            max_y = max(0, lvl.pixel_height - self.height)
+            self.x = max(0.0, min(float(self.x), float(max_x)))
+            self.y = max(0.0, min(float(self.y), float(max_y)))
 
     def reset(self, player=None):
         """Nếu truyền player vào, camera sẽ snap thẳng đến vị trí player mà không bị trượt (smooth)"""

@@ -63,9 +63,31 @@ class Level:
                 # Nạp tile_size từ file JSON, nếu không có thì dùng hằng số TILE_SIZE
                 self.tile_size = data.get("tile_size", TILE_SIZE)
                 
-                self.width = data["width"]
-                self.height = data["height"]
                 self.tiles = data["tiles"]
+                
+                # --- CHUẨN HÓA KÍCH THƯỚC VÀ CẮT TỈA (AUTO-TRIM) ---
+                # Loại bỏ các vùng gạch trống (0) thừa thãi ở biên phải và biên dưới
+                if self.tiles:
+                    max_r = 0
+                    max_c = 0
+                    has_solid = False
+                    for r, row in enumerate(self.tiles):
+                        for c, val in enumerate(row):
+                            if val != 0:
+                                max_r = max(max_r, r)
+                                max_c = max(max_c, c)
+                                has_solid = True
+                    
+                    if has_solid:
+                        # Cắt mảng để khớp chính xác với vùng có gạch
+                        self.tiles = [row[:max_c + 1] for row in self.tiles[:max_r + 1]]
+                
+                self.height = len(self.tiles)
+                self.width = len(self.tiles[0]) if self.height > 0 else 0
+                
+                # Cập nhật thông số Pixel khớp với kích thước thật sau khi cắt tỉa
+                self.pixel_width = self.width * self.tile_size
+                self.pixel_height = self.height * self.tile_size
                 self.bg_color = data.get("bg_color", [0, 0, 0, 255])
                 # --- NẠP CẤU HÌNH BACKGROUND LAYER ---
                 self.bg_layers = []
@@ -105,11 +127,11 @@ class Level:
         player.on_ground = False
         p = player.rect
         
-        # Tính toán các ô gạch xung quanh và giới hạn trong phạm vi mảng
-        start_col = max(0, p.x // TILE_SIZE)
-        end_col = min(self.width - 1, (p.x + p.w) // TILE_SIZE)
-        start_row = max(0, p.y // TILE_SIZE)
-        end_row = min(self.height - 1, (p.y + p.h) // TILE_SIZE)
+        # Tính toán các ô gạch xung quanh và giới hạn trong phạm vi mảng an toàn
+        start_col = max(0, min(self.width - 1, p.x // TILE_SIZE))
+        end_col = max(0, min(self.width - 1, (p.x + p.w) // TILE_SIZE))
+        start_row = max(0, min(self.height - 1, p.y // TILE_SIZE))
+        end_row = max(0, min(self.height - 1, (p.y + p.h) // TILE_SIZE))
 
         for row in range(start_row, end_row + 1):
             for col in range(start_col, end_col + 1):
@@ -377,9 +399,10 @@ class Level:
                 from game.objects.chest import Chest
                 unlock = e.get("unlock", None)
                 custom_name = e.get("custom_name", None)
+                role = e.get("role", None)
                 
                 # 1. Tạo instance rương
-                new_chest = Chest(game, x, y, unlock_skill=unlock, custom_name=custom_name)
+                new_chest = Chest(game, x, y, unlock_skill=unlock, custom_name=custom_name, role_restriction=role)
                 
                 # 2. Tạo ID duy nhất cho rương dựa trên tọa độ
                 chest_id = f"{x}_{y}"
@@ -404,7 +427,8 @@ class Level:
                     self.game, x, y,
                     gate_id=e.get("gate_id"),
                     w=e.get("w", 32),
-                    h=e.get("h", 16)
+                    h=e.get("h", 16),
+                    revert=e.get("revert", False)
                 )
                 self.buttons.append(btn)
                 self.entities.append(btn)
@@ -414,7 +438,8 @@ class Level:
                     self.game, x, y,
                     w=e.get("w", 64),
                     h=e.get("h", 32),
-                    gate_id=e.get("gate_id")
+                    gate_id=e.get("gate_id"),
+                    init_open=e.get("init_open", False)
                 )
                 self.gates.append(gate)
                 self.entities.append(gate)
@@ -548,7 +573,8 @@ class Level:
                 tile_x = (entity.rect.x + entity.rect.w // 2) // self.tile_size  # centerx
                 tile_y = (entity.rect.y + entity.rect.h) // self.tile_size # lấy ô ngay dưới chân
 
-                if 0 <= tile_x < self.width and 0 <= tile_y < self.height:
+                # Kiểm tra an toàn dựa trên kích thước mảng thực tế để tránh IndexError
+                if 0 <= tile_y < len(self.tiles) and 0 <= tile_x < len(self.tiles[tile_y]):
                     if self.tiles[tile_y][tile_x] == 3:   # lava
                         entity.die()
                         continue
@@ -668,8 +694,10 @@ class Level:
         tile_x = int(x // self.tile_size)
         tile_y = int(y // self.tile_size)
 
-        if tile_x < 0 or tile_x >= self.width or tile_y < 0 or tile_y >= self.height:
+        if tile_y < 0 or tile_y >= len(self.tiles):
             return True 
+        if tile_x < 0 or tile_x >= len(self.tiles[tile_y]):
+            return True
 
         tile_value = self.tiles[tile_y][tile_x]
         return tile_value >= 1
@@ -699,11 +727,12 @@ class Level:
 
         # Thu thập tất cả ô đất (tile rắn) có thể spawn phía trên
         ground_tiles = []
-        for row in range(self.height):
-            for col in range(self.width):
-                if self.tiles[row][col] in (1, 2):
+        # Duyệt qua các hàng thực tế đang có trong mảng tiles (đảm bảo an toàn)
+        for row in range(len(self.tiles)):
+            row_data = self.tiles[row]
+            for col in range(len(row_data)):
+                if row_data[col] in (1, 2):
                     ground_tiles.append((col, row))
-
         if not ground_tiles:
             print("[Level] Không có ô đất nào để spawn collectible!")
             return 0
