@@ -180,7 +180,7 @@ class Enemy(Entity):
                             self.vel_x = 0
                             self.direction *= -1
 
-    def take_damage(self, amount, knockback_dir=0):
+    def take_damage(self, amount, knockback_dir=0, from_network=False):
         if not self.alive: return
         self.hp -= amount
         self.show_speech("hit")

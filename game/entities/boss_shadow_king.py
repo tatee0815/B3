@@ -362,16 +362,15 @@ class BossShadowKing(Enemy):
             self.idle_timer -= 1/60.0
             if self.idle_timer <= 0: self.decide_attack(player)
 
-    def take_damage(self, amount, knockback_dir=0):
+    def take_damage(self, amount, knockback_dir=0, from_network=False):
         # Đang biến hình thì không nhận damage (miễn nhiễm)
         if self.is_transforming:
             return
             
-        player = self.game.player
         level = self.game.states["playing"].level
-        is_headshot = False
+        is_headshot = from_network # Nếu đánh từ mạng về -> Mặc định đã check headshot
 
-        # Kiểm tra đạn bắn trúng đầu
+        # 1. Kiểm tra đạn bắn trúng đầu (Giữ nguyên)
         for entity in level.entities:
             if entity.__class__.__name__ == "Projectile" and entity.alive:
                 if sdl2.SDL_HasIntersection(entity.rect, self.head_rect):
@@ -379,10 +378,35 @@ class BossShadowKing(Enemy):
                     entity.die()
                     break
 
-        # Kiểm tra chém cận chiến trúng đầu
-        if not is_headshot and player.is_attacking:
-            if sdl2.SDL_HasIntersection(player.attack_rect, self.head_rect):
-                is_headshot = True
+        # 2. Kiểm tra đòn đánh từ TẤT CẢ Player (Local + Remote)
+        players = []
+        if self.game.player: players.append(self.game.player)
+        playing_state = self.game.states.get("playing")
+        if playing_state and getattr(playing_state, "remote_player", None):
+            players.append(playing_state.remote_player)
+
+        for p in players:
+            if not p or not p.alive: continue
+            
+            # Kiểm tra chém cận chiến trúng đầu
+            if p.is_attacking and not getattr(p, "is_using_skill", False):
+                if sdl2.SDL_HasIntersection(p.attack_rect, self.head_rect):
+                    is_headshot = True
+                    break
+            
+            # Kiểm tra Skill AOE của Princess trúng đầu
+            if getattr(p, "is_using_skill", False) and p.state == "skill":
+                # Tính khoảng cách từ tâm Player đến Head Hitbox của Boss
+                px = p.rect.x + p.rect.w // 2
+                py = p.rect.y + p.rect.h // 2
+                aoe_r = getattr(p, "AOE_RADIUS", 100)
+                
+                # Check va chạm hình tròn (AOE) với hình chữ nhật (Head)
+                hx = max(self.head_rect.x, min(px, self.head_rect.x + self.head_rect.w))
+                hy = max(self.head_rect.y, min(py, self.head_rect.y + self.head_rect.h))
+                if math.hypot(px - hx, py - hy) <= aoe_r:
+                    is_headshot = True
+                    break
 
         # Kiểm tra mốc 75%
         if not self.spawned_milestones["75"] and self.hp <= (self.max_hp * 0.75):

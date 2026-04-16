@@ -118,8 +118,10 @@ class CutsceneState:
                 self.remote_ready = packet.get("ready", False)
             elif ptype == "game_sync":
                 # Đối phương đã vào game rồi, bắt buộc mình cũng phải vào ngay!
-                self.remote_ready = True
-                self.local_ready = True
+                # CHỈ TỰ ĐỘNG BỎ QUA NẾU ĐÂY LÀ ĐOẠN INTRO (VÀO TRẬN)
+                if self.next_state == "playing":
+                    self.remote_ready = True
+                    self.local_ready = True
 
     def update(self, delta_time):
         if hasattr(self.game, "game_mode") and self.game.game_mode == "multi":

@@ -16,13 +16,13 @@ class Player(Entity):
             return self.game.player_progress["players"].get(self.role, {})
         return self.game.player_progress
 
-    def __init__(self, game):
+    def __init__(self, game, role="knight"):
         # Khởi tạo tại tọa độ mặc định, kích thước nhân vật 36x60
         super().__init__(game, x=-1000, y=-1000, w=36, h=60)
         self.is_remote = False
         self.z_index = 4
         self.is_visible = True
-        self.role = "knight"
+        self.role = role
         
         # Chỉ số cơ bản (Khởi tạo từ progress hiện tại)
         self.hp = self.progress.get("hp", PLAYER_MAX_HP)
@@ -93,6 +93,8 @@ class Player(Entity):
 
         self.debug_mode = False # Bật lại khung đỏ hitbox theo yêu cầu
         self.is_god_mode = False
+        self.is_flying = False
+        self.is_ghosting = False
 
     def handle_input(self, event):
         """Xử lý phím dựa trên KEY_BINDINGS_DEFAULT"""
@@ -342,8 +344,8 @@ class Player(Entity):
         was_standing_on_platform = self.on_ground 
 
         if self.recoil_timer > 0:
-            # Trạng thái bị bật lùi: Giữ nguyên vel_x đã set, chỉ thêm trọng lực
-            self.vel_y += GRAVITY 
+            # Trạng thái bị bật lùi: Giữ nguyên vel_x đã set
+            pass 
             
         elif self.is_dashing:
             # Trạng thái lướt: Khóa trục Y, di chuyển nhanh trục X
@@ -353,22 +355,42 @@ class Player(Entity):
             if self.dash_timer <= 0: 
                 self.is_dashing = False
                 
+        elif self.is_flying:
+            # Chế độ bay: Di chuyển tự do 8 hướng, không trọng lực
+            self.vel_x = 0
+            if self.moving_left: self.vel_x = -PLAYER_SPEED * 2
+            if self.moving_right: self.vel_x = PLAYER_SPEED * 2
+            
+            self.vel_y = 0
+            keys = sdl2.SDL_GetKeyboardState(None)
+            if keys[sdl2.SDL_SCANCODE_W] or keys[sdl2.SDL_SCANCODE_UP]:
+                self.vel_y = -PLAYER_SPEED * 2
+            if keys[sdl2.SDL_SCANCODE_S] or keys[sdl2.SDL_SCANCODE_DOWN]:
+                self.vel_y = PLAYER_SPEED * 2
+                
+            # Tự cập nhật tọa độ cho chế độ bay (vì đã skip super().update)
+            self.pos_x += self.vel_x * delta_time * 60
+            self.pos_y += self.vel_y * delta_time * 60
         else:
-            # Trạng thái bình thường: Di chuyển phím + Trọng lực
+            # Trạng thái bình thường: Di chuyển phím
             if self.moving_left: self.vel_x = -PLAYER_SPEED
             elif self.moving_right: self.vel_x = PLAYER_SPEED
             else: self.vel_x = 0
 
         # Giới hạn tốc độ rơi tối đa
-        from game.constants import MAX_FALL_SPEED
         if self.vel_y > MAX_FALL_SPEED: self.vel_y = MAX_FALL_SPEED
 
         # --- 4. DI CHUYỂN VẬT LÝ VÀ VA CHẠM ---
         
-        # Cộng vận tốc vào vị trí (Hàm của lớp Entity cơ bản)
-        super().update(delta_time, level)
+        # Cộng vận tốc vào vị trí (Chỉ chạy khi không trong chế độ bay)
+        if not self.is_flying:
+            super().update(delta_time, level)
+        else:
+            # Cập nhật rect cho chế độ bay
+            self.rect.x = int(round(self.pos_x))
+            self.rect.y = int(round(self.pos_y))
 
-        if level:
+        if level and not self.is_ghosting:
             # Xử lý va chạm với gạch (Tiles)
             level.handle_collision(self)
             
@@ -463,7 +485,7 @@ class Player(Entity):
         if self.is_god_mode: # Chống bị trừ máu
             return
         """Player bị quái đánh - đã tích hợp invincible + knockback"""
-        if self.is_respawning or self.invincible_time > 0:
+        if self.is_respawning or self.invincible_time > 0 or self.is_using_skill:
             return  # Không nhận sát thương khi đang hồi sinh hoặc bất tử
         self.hp -= amount
         print(f"Player take damage! HP còn: {self.hp}")
@@ -497,8 +519,10 @@ class Player(Entity):
             if self.game.game_mode == "multi":
                 self.game.network.send_data({"type": "game_over"})
                 self.game.change_state("intro", mode="multi_fail")
+                return # THOÁT NGAY, KHÔNG HỒI SINH
             else:
                 self.game.change_state("fail")
+                return # THOÁT NGAY, KHÔNG HỒI SINH
         # Hồi sinh nếu còn mạng
         self.is_respawning = True
         spawn_pos = self.checkpoint_pos

@@ -8,13 +8,10 @@ from .enemy import EnemyFireball
 
 class Princess(Player):
     def __init__(self, game):
-        super().__init__(game)
-        self.role = "princess"
+        super().__init__(game, role="princess")
             
-        progress = self.progress
-        self.hp = progress.get("hp", PLAYER_MAX_HP)
-        self.mana = progress.get("mana", 50)
-        self.checkpoint_pos = progress.get("checkpoint", self.checkpoint_pos)
+        # Tọa độ checkpoint ban đầu (nếu có lưu)
+        self.checkpoint_pos = self.progress.get("checkpoint", self.checkpoint_pos)
         
         self.state = "idle"
         

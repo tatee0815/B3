@@ -3,6 +3,7 @@ from game.entities.projectile import Projectile
 from game.level.level import Level
 from game.objects.platform import MovingPlatform
 from game.objects.portal import EndPortal
+from game.utils.debug import DebugManager
 
 class PlayingState:
     def __init__(self, game):
@@ -19,6 +20,7 @@ class PlayingState:
         self.last_local_portal_state = False
         self.last_remote_portal_state = False
         self.multi_completed = False  # tránh gọi nhiều lần
+        self.debug = DebugManager(self.game)
 
     @property
     def player(self):
@@ -79,8 +81,6 @@ class PlayingState:
             # Chơi đơn
             self.local_player = self.game.player
             self.remote_player = None
-
-
 
         # --- BƯỚC 2: XỬ LÝ VỊ TRÍ NHÂN VẬT & CHECKPOINT ---
         saved_cp = self.player.progress.get("checkpoint")
@@ -288,7 +288,7 @@ class PlayingState:
                     if idx is not None and idx < len(self.level.enemies):
                         enemy = self.level.enemies[idx]
                         if enemy.alive:
-                            enemy.take_damage(dmg, knockback_dir=k_dir)
+                            enemy.take_damage(dmg, knockback_dir=k_dir, from_network=True)
                             print(f"[Network] Remote player hit enemy {idx} for {dmg} damage")
             
             elif ptype == "button_pressed":
@@ -524,9 +524,32 @@ class PlayingState:
         if self.remote_player:
             self.remote_player.render(renderer, self.game.camera)
 
+        # --- 5. RENDER DEBUG OVERLAY ---
+        if self.debug.enabled:
+            self.render_debug_overlay(renderer)
+
     def handle_event(self, event):
         if event.type == sdl2.SDL_KEYDOWN:
             scancode = event.key.keysym.scancode
+            
+            # --- DEBUG CONTROLS ---
+            if scancode == sdl2.SDL_SCANCODE_0:
+                self.debug.toggle_enabled()
+            
+            if self.debug.enabled:
+                if scancode == sdl2.SDL_SCANCODE_1:
+                    self.debug.toggle_god_mode(self.player)
+                elif scancode == sdl2.SDL_SCANCODE_2:
+                    self.debug.toggle_fly_mode(self.player)
+                elif scancode == sdl2.SDL_SCANCODE_3:
+                    self.debug.toggle_ghost_mode(self.player)
+                elif scancode == sdl2.SDL_SCANCODE_4:
+                    self.debug.next_level()
+                elif scancode == sdl2.SDL_SCANCODE_5:
+                    self.debug.heal_all(self.player)
+                elif scancode == sdl2.SDL_SCANCODE_6:
+                    self.debug.log_coords(self.player)
+
             from game.constants import KEY_BINDINGS_DEFAULT
             if scancode == KEY_BINDINGS_DEFAULT["pause"] or scancode == sdl2.SDL_SCANCODE_ESCAPE:
                 self.game.change_state("pause")
@@ -539,6 +562,32 @@ class PlayingState:
         if self.player:
             self.player.handle_input(event)
         self.game.last_time = sdl2.timer.SDL_GetTicks()
+
+    def render_debug_overlay(self, renderer):
+        # Vẽ một panel nhỏ ở góc trên bên trái
+        import sdl2.sdlttf as ttf
+        
+        info = [
+            f"DEBUG MODE ACTIVATED",
+            f"Pos: ({int(self.player.rect.x)}, {int(self.player.rect.y)})",
+            f"1. God: {'YES' if self.debug.god_mode else 'no'}",
+            f"2. Fly: {'YES' if self.debug.fly_mode else 'no'}",
+            f"3. Ghost: {'YES' if self.debug.ghost_mode else 'no'}",
+            f"4. Skip | 5. Heal | 6. Log"
+        ]
+        
+        y_offset = 10
+        for line in info:
+            color = sdl2.SDL_Color(0, 255, 0, 255) if "YES" in line or "MODE" in line else sdl2.SDL_Color(200, 200, 200, 255)
+            surf = ttf.TTF_RenderUTF8_Blended(self.game.font, line.encode('utf-8'), color)
+            if surf:
+                tex = sdl2.SDL_CreateTextureFromSurface(renderer, surf)
+                w, h = surf.contents.w, surf.contents.h
+                dst = sdl2.SDL_Rect(10, y_offset, w, h)
+                sdl2.SDL_RenderCopy(renderer, tex, None, dst)
+                sdl2.SDL_DestroyTexture(tex)
+                sdl2.SDL_FreeSurface(surf)
+                y_offset += h + 5
 
     def on_exit(self):
         pass
