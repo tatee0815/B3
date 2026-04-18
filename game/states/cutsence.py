@@ -34,7 +34,7 @@ class CutsceneState:
             self.title = "NGHI THỨC ĐẢO NGƯỢC"
             self.lines = [
                 "Cơ thể công chúa đã bị hiến tế, tuy nhiên linh hồn vẫn ở lại...", 
-                "Một khế ước đã được thiết lập giữa hai người", 
+                "Mối liên kết giữa linh giới và thực tại đã được hình thành", 
                 "Hãy cùng nhau vượt qua thử thách để hồi sinh linh hồn công chúa"
             ]
             self.next_state = "playing"
