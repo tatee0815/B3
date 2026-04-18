@@ -52,6 +52,14 @@ class MenuState:
         self.options = self.main_options
         self.particles.clear()
         
+        # Ngắt kết nối mạng, trả lại port nếu có
+        if hasattr(self.game, 'network'):
+            try:
+                self.game.network.close()
+            except Exception:
+                pass
+        
+        
         # KIỂM TRA FILE SAVE ĐỂ HIỆN/ẨN NÚT TIẾP TỤC
         import os
         has_sp_save = os.path.exists("save_sp.json")

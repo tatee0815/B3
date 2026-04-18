@@ -195,15 +195,39 @@ class PlayingState:
                         idx = edata.get("i")
                         if idx is not None and idx < len(self.level.enemies):
                             e = self.level.enemies[idx]
-                            e.rect.x = edata["x"]
-                            e.rect.y = edata["y"]
-                            e.pos_x = float(e.rect.x)
-                            e.pos_y = float(e.rect.y)
+                            e.rect.x = int(edata["x"])
+                            e.rect.y = int(edata["y"])
+                            e.pos_x = float(edata["x"])
+                            e.pos_y = float(edata["y"])
+                            if hasattr(e, "fixed_x"):
+                                e.fixed_x = float(edata["x"])
+                            if hasattr(e, "fixed_y"):
+                                e.fixed_y = float(edata["y"])
                             e.alive = edata["a"]
                             if hasattr(e, "direction"):
                                 e.direction = edata.get("d", e.direction)
                             if hasattr(e, "hp"):
                                 e.hp = edata.get("hp", e.hp)
+                            if "anim" in edata and hasattr(e, "anim_state"):
+                                e.anim_state = edata["anim"]
+                            if "st" in edata and hasattr(e, "state"):
+                                e.state = edata["st"]
+                            if "ht" in edata and hasattr(e, "has_transformed"):
+                                e.has_transformed = edata["ht"]
+                            if "it" in edata and hasattr(e, "is_transforming"):
+                                e.is_transforming = edata["it"]
+                                
+                            # Cập nhật timer lưới cảnh báo chiêu thức cho Client Boss nếu cần
+                            if "sw" in edata and hasattr(e, "slash_warning_visual"):
+                                e.slash_warning_visual = edata["sw"]
+                                e.slash_y_target = edata.get("s_y", 0)
+                            if "lw" in edata and hasattr(e, "lightning_warning_timer"):
+                                e.lightning_warning_timer = edata["lw"]
+                            if "la" in edata and hasattr(e, "is_lightning_active"):
+                                e.is_lightning_active = edata["la"]
+                                if "lx" in edata: e.lightning_x_positions = edata["lx"]
+                            if "idb" in edata and hasattr(e, "is_dead_body"):
+                                e.is_dead_body = edata["idb"]
                 
             elif ptype == "platform_sync":
                 # ĐỒNG BỘ VỊ TRÍ SÀN 1 LẦN
@@ -251,6 +275,25 @@ class PlayingState:
                         if hasattr(e, "break_box"):
                             e.break_box(sync_drop_type=drop_type)
                         break
+
+            elif ptype == "spawn_item":
+                item_cls = packet.get("item_cls")
+                ix = packet.get("x")
+                iy = packet.get("y")
+                if item_cls == "Heart":
+                    from game.entities.collectible import Heart
+                    self.level.entities.append(Heart(self.game, ix, iy))
+                elif item_cls == "ManaBottle":
+                    from game.entities.collectible import ManaBottle
+                    self.level.entities.append(ManaBottle(self.game, ix, iy))
+                    
+            elif ptype == "spawn_multi_portal":
+                px = packet.get("x")
+                py = packet.get("y")
+                portal = EndPortal(self.game, px, py)
+                portal.is_game_end_multi = True 
+                self.level.entities.append(portal)
+                
             elif ptype == "level_change":
                 new_level = packet["level"]
                 self.game.player_progress["current_level"] = new_level
@@ -277,6 +320,28 @@ class PlayingState:
                     proj = Projectile(self.game, px, py, pdir)
                     self.level.entities.append(proj)
                     print(f"[Network] Spawned remote projectile at ({px}, {py})")
+
+            elif ptype == "spawn_enemy_fireball":
+                cx = packet.get("x")
+                cy = packet.get("y")
+                vx = packet.get("vx")
+                vy = packet.get("vy")
+                dmg = packet.get("damage", 1)
+                is_boss = packet.get("is_boss", False)
+                boss_p2 = packet.get("boss_p2", False)
+                if cx is not None and cy is not None:
+                    if is_boss:
+                        from game.entities.boss_shadow_king import BossFireball
+                        fb = BossFireball(self.game, cx, cy, vx, vy, dmg)
+                        if boss_p2:
+                            fb.anim_state = "boss_fireball_p2"
+                            fb.speed = 5.5
+                        else:
+                            fb.speed = 4.5
+                    else:
+                        from game.entities.enemy import EnemyFireball
+                        fb = EnemyFireball(self.game, cx, cy, vx, vy, dmg)
+                    self.level.entities.append(fb)
 
             elif ptype == "hit_enemy":
                 # CHỈ HOST MỚI XỬ LÝ SÁT THƯƠNG THỰC SỰ TRÊN QUÁI VẬT
@@ -379,14 +444,32 @@ class PlayingState:
                 if self.game.network.is_host:
                     enemies_sync = []
                     for i, e in enumerate(self.level.enemies):
-                        enemies_sync.append({
+                        edata = {
                             "i": i,
-                            "x": e.rect.x,
-                            "y": e.rect.y,
+                            "x": getattr(e, "fixed_x", e.rect.x), # Dùng fixed_x cho Boss
+                            "y": getattr(e, "fixed_y", e.rect.y),
                             "a": e.alive,
                             "d": getattr(e, "direction", 1),
                             "hp": getattr(e, "hp", 0)
-                        })
+                        }
+                        if hasattr(e, "anim_state"): edata["anim"] = e.anim_state
+                        if hasattr(e, "state"): edata["st"] = e.state
+                        if hasattr(e, "has_transformed"): edata["ht"] = e.has_transformed
+                        if hasattr(e, "is_transforming"): edata["it"] = e.is_transforming
+                        
+                        # Boss Shadow King specific
+                        if hasattr(e, "slash_warning_visual"):
+                            edata["sw"] = e.slash_warning_visual
+                            edata["s_y"] = e.slash_y_target
+                        if hasattr(e, "lightning_warning_timer"):
+                            edata["lw"] = e.lightning_warning_timer
+                        if hasattr(e, "is_lightning_active"):
+                            edata["la"] = e.is_lightning_active
+                            edata["lx"] = e.lightning_x_positions
+                        if hasattr(e, "is_dead_body"):
+                            edata["idb"] = e.is_dead_body
+                            
+                        enemies_sync.append(edata)
                     sync_data["enemies"] = enemies_sync
 
                 self.game.network.send_data(sync_data)

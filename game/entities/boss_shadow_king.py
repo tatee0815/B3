@@ -166,6 +166,49 @@ class BossShadowKing(Enemy):
         self.attack_anim_duration = 1.4     
 
     def update(self, delta_time, level):
+        is_client = self.game.game_mode == "multi" and not self.game.network.is_host
+        
+        if is_client:
+            if self.is_dead_body:
+                if self.death_timer == 0: self.death_timer = 4.5 # Default start if just set
+                self.death_timer -= delta_time
+                self.death_alpha = int(255 * max(0, self.death_timer / 4.0))
+                for p in self.particles[:]:
+                    p['x'] += p['vx'] * delta_time * 60
+                    p['y'] += p['vy'] * delta_time * 60
+                    p['vy'] += GRAVITY * delta_time * 60 * 0.3
+                    p['life'] -= delta_time
+                    if p['life'] <= 0:
+                        self.particles.remove(p)
+                        
+            self._update_anim_frame(delta_time)
+            
+            if self.anim_state in ["boss_idle", "boss_idle_p2"]:
+                self.head_anim_timer += delta_time
+                if self.head_anim_timer >= self.head_anim_speed:
+                    self.head_anim_timer -= self.head_anim_speed
+                    self.head_anim_frame += 1
+                    head_config = AssetManager.ANIM_CONFIG.get("boss_head", {})
+                    if head_config and "frames" in head_config:
+                        self.head_anim_frame %= head_config["frames"]
+                        
+            if self.slash_warning_visual > 0:
+                self.slash_warning_visual -= delta_time
+            if self.lightning_warning_timer > 0:
+                self.lightning_warning_timer -= delta_time
+                
+            self.timer += delta_time
+            
+            # Cập nhật hitbox cơ bản để vẽ chính xác trên Client
+            current_jut = self.attack_jut if (self.slash_warning_visual > 0 or self.is_lightning_active or 'attack' in self.anim_state) else self.idle_jut
+            self.head_rect.x = int(self.fixed_x + (self.body_w - self.head_w)//2 - current_jut)
+            self.head_rect.y = int(self.fixed_y - self.head_h + 5)
+            self.rect.x = min(int(self.fixed_x), self.head_rect.x)
+            self.rect.y = self.head_rect.y
+            self.rect.w = self.body_w + current_jut
+            self.rect.h = self.body_h + self.head_h
+            return
+
         if self.is_dead_body:
             self.anim_state = "boss_death"
             self.death_timer -= delta_time
@@ -193,6 +236,19 @@ class BossShadowKing(Enemy):
 
         self.timer += delta_time
         player = self.game.player
+        
+        # Mở rộng cho MULTIPLAYER: Tìm người chơi gần nhất (và còn sống)
+        if self.game.game_mode == "multi":
+            playing_state = self.game.states.get("playing")
+            if playing_state and getattr(playing_state, "remote_player", None):
+                remote = playing_state.remote_player
+                if not player.alive and remote.alive:
+                    player = remote
+                elif player.alive and remote.alive:
+                    dist_local = (player.rect.x - self.rect.x)**2 + (player.rect.y - self.rect.y)**2
+                    dist_remote = (remote.rect.x - self.rect.x)**2 + (remote.rect.y - self.rect.y)**2
+                    if dist_remote < dist_local:
+                        player = remote
         
         # --- LOGIC BIẾN HÌNH ---
         # 1. Bắt đầu biến hình
@@ -471,7 +527,7 @@ class BossShadowKing(Enemy):
 
     def spawn_multi_portal(self):
         """Triệu hồi cổng kết thúc (End Portal) cho chế độ Multiplayer"""
-        p_x, p_y = 1100, 350
+        p_x, p_y =  550, 600
         level = self.game.states["playing"].level
         try:
             from game.objects.portal import EndPortal
@@ -479,6 +535,13 @@ class BossShadowKing(Enemy):
             # Quan trọng: Đánh dấu đây là cổng kết thúc game để logic in playing.py nhận diện
             portal.is_game_end_multi = True 
             level.entities.append(portal)
+            
+            # ĐỒNG BỘ MULTIPLAYER
+            if self.game.game_mode == "multi" and self.game.network.is_host:
+                self.game.network.send_data({
+                    "type": "spawn_multi_portal",
+                    "x": p_x, "y": p_y
+                })
         except ImportError:
             pass
 
@@ -534,6 +597,17 @@ class BossShadowKing(Enemy):
                 fb.speed = 4.5
                 
             level.entities.append(fb)
+            
+            # Đồng bộ cho Client spawn cùng lúc
+            if self.game.game_mode == "multi" and self.game.network.is_host:
+                self.game.network.send_data({
+                    "type": "spawn_enemy_fireball",
+                    "x": cx, "y": cy,
+                    "vx": vx, "vy": vy,
+                    "damage": 1,
+                    "boss_p2": self.has_transformed,
+                    "is_boss": True
+                })
         self.start_idle()
 
     def start_idle(self):
@@ -555,6 +629,19 @@ class BossShadowKing(Enemy):
             from game.entities.collectible import Heart, ManaBottle
             level.entities.append(Heart(self.game, item_x, item_y))
             level.entities.append(ManaBottle(self.game, item_x + 50, item_y)) # Lệch x một chút để không chồng nhau
+            
+            # ĐỒNG BỘ MULTIPLAYER
+            if self.game.game_mode == "multi" and self.game.network.is_host:
+                self.game.network.send_data({
+                    "type": "spawn_item",
+                    "item_cls": "Heart",
+                    "x": item_x, "y": item_y
+                })
+                self.game.network.send_data({
+                    "type": "spawn_item",
+                    "item_cls": "ManaBottle",
+                    "x": item_x + 50, "y": item_y
+                })
         except ImportError:
             pass
 

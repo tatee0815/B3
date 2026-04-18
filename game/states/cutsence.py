@@ -32,7 +32,11 @@ class CutsceneState:
             self.next_state = "playing"
         elif self.mode == "intro_2p":
             self.title = "NGHI THỨC ĐẢO NGƯỢC"
-            self.lines = ["Công chúa đã hiến tế, nhưng linh hồn vẫn ở lại...", "Thế giới song song đã mở ra kết nối hai người.", "Hãy cùng nhau tìm kiếm cổ vật để đảo ngược định mệnh!"]
+            self.lines = [
+                "Cơ thể công chúa đã bị hiến tế, tuy nhiên linh hồn vẫn ở lại...", 
+                "Một khế ước đã được thiết lập giữa hai người", 
+                "Hãy cùng nhau vượt qua thử thách để hồi sinh linh hồn công chúa"
+            ]
             self.next_state = "playing"
         elif self.mode == "outro":
             self.title = "KẾT THÚC BẤT NGỜ"
@@ -41,13 +45,16 @@ class CutsceneState:
         elif self.mode == "multi_win":
             self.title = "HUYỀN THOẠI SONG HÀNH"
             self.lines = [
-                "Sương rồng đơm lá đơm hoa, nước đông đầy trên cao nguyên đá...",
-                "Linh hồn của Công chúa đã được hàn gắn vĩnh viễn.",
-                "Từ giờ, vận mệnh của cả hai sẽ bước sang một chương mới!"
+                "Sương rồng đơm lá đơm hoa, nước đong đầy trên cao nguyên đá...",
+                "Linh hồn của Công chúa đã được hàn gắn.",
+                "Tuy nhiên, thử thách mới lại đang chờ đợi cả hai",
+                "Cuộc phiêu lưu của họ chỉ mới bắt đầu!",
+                "Cảm ơn bạn đã trải nghiệm game!",
+                "To be continued... "
             ]
             self.next_state = "win"
         elif self.mode == "multi_fail":
-            self.title = "ĐỊNH MỆNH TAN VỠ"
+            self.title = "KẾ ƯỚC TAN VỠ"
             self.lines = [
                 "Sức mạnh đơn độc không thể chống lại bóng tối...",
                 "Khi một người ngã xuống, tất cả đều sụp đổ.",

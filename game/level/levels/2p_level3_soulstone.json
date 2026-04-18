@@ -78,12 +78,15 @@
     { "type": "chest", "x": 850, "y": 760, "unlock": "skill_a", "role": "knight", "custom_name": "Chưởng khí (A)" },
     { "type": "chest", "x": 1050, "y": 150, "unlock": "aoe", "role": "princess", "custom_name": "BOOOM (A)" },
     {"type": "platform", "x": 1010, "y": 210, "w": 100, "h": 20},
+    {"type": "platform", "x": 2350, "y": 870, "w": 100, "h": 20},
     { "type": "skeleton", "x": 500, "y": 500 },
     { "type": "skeleton", "x": 1000, "y": 500 },
     { "type": "skeleton", "x": 1500, "y": 100 },
     { "type": "firebat", "x": 400, "y": 900 },
     { "type": "firebat", "x": 1200, "y": 900 },
     { "type": "firebat", "x": 2000, "y": 900 },
+    { "type": "firebat", "x": 1050, "y": 170 },
+    { "type": "firebat", "x": 850, "y": 170 },
     { "type": "eportal", "x": 2500, "y": 750 }
   ]
 }

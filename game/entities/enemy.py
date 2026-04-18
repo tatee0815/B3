@@ -600,6 +600,17 @@ class FireBat(Enemy):
         # Tạo đạn với hướng đã tính
         fireball = EnemyFireball(self.game, start_x, start_y, dir_x, dir_y, self.damage)
         level.entities.append(fireball)
+        
+        # Đồng bộ với client
+        if self.game.game_mode == "multi" and self.game.network.is_host:
+            self.game.network.send_data({
+                "type": "spawn_enemy_fireball",
+                "x": start_x, "y": start_y,
+                "vx": dir_x, "vy": dir_y,
+                "damage": self.damage,
+                "boss_p2": False,
+                "is_boss": False
+            })
 
     def _update_anim_frame(self, delta_time):
         self.anim_timer += delta_time
