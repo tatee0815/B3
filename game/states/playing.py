@@ -83,40 +83,26 @@ class PlayingState:
             self.remote_player = None
 
         # --- BƯỚC 2: XỬ LÝ VỊ TRÍ NHÂN VẬT & CHECKPOINT ---
-        saved_cp = self.player.progress.get("checkpoint")
-
         is_client = (self.game.game_mode == "multi" and not self.game.network.is_host)
         is_host = (self.game.game_mode == "multi" and self.game.network.is_host)
 
+        # Xóa checkpoint nếu đi từ Intro (bắt đầu hành trình mới)
         if from_intro:
             self.game.player_progress["checkpoint"] = None
+            self.player.progress["checkpoint"] = None
+
+        saved_cp = self.player.progress.get("checkpoint")
+
+        # Logic sinh tồn (Respawn) dùng chung cho tất cả các nhánh
+        if saved_cp:
+            self.player.respawn(saved_cp)
+            self.player.checkpoint_pos = saved_cp
+        else:
             spawn_pos = self.level.get_spawn_position(is_p2=is_client)
             self.player.respawn(spawn_pos)
             self.player.checkpoint_pos = spawn_pos
             self.player.progress["checkpoint"] = spawn_pos
             self.game.player_progress["checkpoint"] = spawn_pos
-
-        elif menu_continue:
-            if saved_cp:
-                self.player.respawn(saved_cp)
-                self.player.checkpoint_pos = saved_cp
-            else:
-                spawn_pos = self.level.get_spawn_position(is_p2=is_client)
-                self.player.respawn(spawn_pos)
-                self.player.checkpoint_pos = spawn_pos
-                self.player.progress["checkpoint"] = spawn_pos
-                self.game.player_progress["checkpoint"] = spawn_pos
-
-        elif force_reset or just_loaded_map:
-            if saved_cp:
-                self.player.respawn(saved_cp)
-                self.player.checkpoint_pos = saved_cp
-            else:
-                spawn_pos = self.level.get_spawn_position(is_p2=is_client)
-                self.player.respawn(spawn_pos)
-                self.player.checkpoint_pos = spawn_pos
-                self.player.progress["checkpoint"] = spawn_pos
-                self.game.player_progress["checkpoint"] = spawn_pos
 
         # Đặt trước vị trí sinh ra cho remote_player tránh lỗi bị rớt map ở những frame đầu tiên
         if self.remote_player:

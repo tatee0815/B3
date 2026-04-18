@@ -235,20 +235,7 @@ class BossShadowKing(Enemy):
             return
 
         self.timer += delta_time
-        player = self.game.player
-        
-        # Mở rộng cho MULTIPLAYER: Tìm người chơi gần nhất (và còn sống)
-        if self.game.game_mode == "multi":
-            playing_state = self.game.states.get("playing")
-            if playing_state and getattr(playing_state, "remote_player", None):
-                remote = playing_state.remote_player
-                if not player.alive and remote.alive:
-                    player = remote
-                elif player.alive and remote.alive:
-                    dist_local = (player.rect.x - self.rect.x)**2 + (player.rect.y - self.rect.y)**2
-                    dist_remote = (remote.rect.x - self.rect.x)**2 + (remote.rect.y - self.rect.y)**2
-                    if dist_remote < dist_local:
-                        player = remote
+        player = self._get_target_player() or self.game.player
         
         # --- LOGIC BIẾN HÌNH ---
         # 1. Bắt đầu biến hình

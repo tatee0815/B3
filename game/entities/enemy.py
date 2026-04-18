@@ -71,14 +71,20 @@ class Enemy(Entity):
         if not players:
             return None
             
-        # Trả về người chơi gần nhất
+        # Trả về người chơi gần nhất (Ưu tiên người còn sống)
         closest_player = None
         min_dist = 999999
-        for p in players:
+        
+        # Lọc ra những người chơi còn sống trước
+        alive_players = [p for p in players if getattr(p, "alive", False)]
+        target_list = alive_players if alive_players else players
+        
+        for p in target_list:
             dist = (p.rect.x - self.rect.x)**2 + (p.rect.y - self.rect.y)**2
             if dist < min_dist:
                 min_dist = dist
                 closest_player = p
+                
         return closest_player
 
     def update(self, delta_time, level):
