@@ -430,6 +430,14 @@ class Level:
                     h=e.get("h", 16),
                     revert=e.get("revert", False)
                 )
+                
+                # Check btn state
+                btn_key = f"{self.name}_{x}_{y}"
+                if btn_key in game.player_progress.get("pressed_buttons", []):
+                    btn.pressed = True
+                    from game.constants import COLORS
+                    btn.color = COLORS["gray"]
+                
                 self.buttons.append(btn)
                 self.entities.append(btn)
 
@@ -441,6 +449,14 @@ class Level:
                     gate_id=e.get("gate_id"),
                     init_open=e.get("init_open", False)
                 )
+                
+                # Check gate state
+                gate_state = game.player_progress.get("gate_states", {}).get(self.name, {}).get(gate.gate_id)
+                if gate_state == "open":
+                    gate.open()
+                elif gate_state == "closed":
+                    gate.close()
+
                 self.gates.append(gate)
                 self.entities.append(gate)
         

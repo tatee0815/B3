@@ -17,6 +17,27 @@ class Button(Entity):
             
             # Kích hoạt gate tương ứng
             level = self.game.states["playing"].level
+            
+            # Lưu state của button và gate
+            level_name = level.name
+            btn_key = f"{level_name}_{self.rect.x}_{self.rect.y}"
+            
+            progress = self.game.player_progress
+            if "pressed_buttons" not in progress:
+                progress["pressed_buttons"] = []
+            if btn_key not in progress["pressed_buttons"]:
+                progress["pressed_buttons"].append(btn_key)
+                
+            if "gate_states" not in progress:
+                progress["gate_states"] = {}
+            if level_name not in progress["gate_states"]:
+                progress["gate_states"][level_name] = {}
+            
+            if self.revert:
+                progress["gate_states"][level_name][self.gate_id] = "closed"
+            else:
+                progress["gate_states"][level_name][self.gate_id] = "open"
+                
             for gate in level.gates:
                 if gate.gate_id == self.gate_id:
                     if self.revert:
