@@ -32,9 +32,10 @@ class LobbyState:
         
         self.host_ip = self.get_local_ip()
         self.room_port = 0
-        self.input_text = ""      # chỉ lưu 5 số port
+        self.input_text = ""      # lưu mã phòng (Base36) hoặc IP
         self.is_continue = False
         self.connect_error = False
+        self.ignore_z_input = False
 
         # Assets
         self.bg_texture = None
@@ -74,6 +75,7 @@ class LobbyState:
         self._build_options()
         self.ready_to_start["other"] = False
         self.connect_error = False
+        self.ignore_z_input = False
         self.mode_sent = False
         self.particles.clear()
 
@@ -201,6 +203,8 @@ class LobbyState:
                         self.sub_state = "joining"
                         self.input_text = ""
                         self.connect_error = False
+                        if scancode == sdl2.SDL_SCANCODE_Z:
+                            self.ignore_z_input = True
                     elif selected == "Quay lại":
                         self.game.change_state("menu")
 
@@ -214,12 +218,8 @@ class LobbyState:
                 if scancode == sdl2.SDL_SCANCODE_BACKSPACE:
                     self.input_text = self.input_text[:-1]
                 elif scancode == sdl2.SDL_SCANCODE_RETURN:
-                    # Kiểm tra chuỗi nhập vào (Mã phòng có thể là 4 hoặc 5 số tùy IP)
-                    if len(self.input_text) >= 4 and self.input_text.isdigit():
-                        # Dịch ngược mã 5 số thành IP mạng LAN
+                    if len(self.input_text) > 0:
                         target_ip = self.game.network.decode_room_code(self.input_text)
-                        
-                        # Kết nối thẳng tới IP đó qua port 5555
                         self.game.network.connect_to_host(target_ip, port=5555)
                         self.sub_state = "connecting"
                         self.connect_error = False
@@ -236,8 +236,11 @@ class LobbyState:
                     AudioManager.play_sfx("choice")
 
         elif event.type == sdl2.SDL_TEXTINPUT and self.sub_state == "joining":
-            char = event.text.text.decode('utf-8')
-            if char.isdigit() and len(self.input_text) < 5:
+            char = event.text.text.decode('utf-8').upper()
+            if getattr(self, 'ignore_z_input', False) and char == 'Z':
+                self.ignore_z_input = False
+                return
+            if (char.isalnum() or char == '.') and len(self.input_text) < 15:
                 self.input_text += char
 
     def handle_network(self, packets):
@@ -370,7 +373,6 @@ class LobbyState:
             if self.game.network.is_host:
                 if not self.game.network.connected:
                     self._draw_text_simple(renderer, "ĐANG TẠO PHÒNG...", 0, 200, (255,215,0), center_x=True)
-                    # GỌI MÃ PHÒNG LÊN MÀN HÌNH ĐỂ HOST ĐỌC CHO CLIENT NHẬP
                     room_code = self.game.network.get_room_code()
                     self._draw_text_simple(renderer, f"Mã phòng: {room_code}", 0, 300, (255,255,255), center_x=True)
                     self._draw_text_simple(renderer, "Nhấn ESC để hủy", 0, 500, (150,150,150), center_x=True)
@@ -387,11 +389,11 @@ class LobbyState:
 
         elif self.sub_state == "joining":
             self._draw_text_simple(renderer, "THAM GIA PHÒNG", 0, 200, (255, 215, 0), center_x=True)
-            self._draw_text_simple(renderer, "Nhập mã phòng (5 số):", 0, 300, (200, 200, 200), center_x=True)
+            self._draw_text_simple(renderer, "Nhập mã phòng (hoặc IP):", 0, 300, (200, 200, 200), center_x=True)
             self._draw_text_simple(renderer, self.input_text + "_", 0, 350, (255, 255, 255), center_x=True)
             self._draw_text_simple(renderer, "ENTER: kết nối | ESC: quay lại", 0, 500, (150,150,150), center_x=True)
             if self.connect_error:
-                self._draw_text_simple(renderer, "Phải nhập đúng 5 chữ số!", 0, 450, (255,0,0), center_x=True)
+                self._draw_text_simple(renderer, "Mã phòng không hợp lệ!", 0, 450, (255,0,0), center_x=True)
 
         elif self.sub_state == "connecting":
             self._draw_text_simple(renderer, "ĐANG KẾT NỐI...", 0, 300, (255, 215, 0), center_x=True)

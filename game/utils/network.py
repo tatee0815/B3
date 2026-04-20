@@ -27,33 +27,35 @@ class NetworkManager:
             return "127.0.0.1"
 
     def get_room_code(self):
-        """Tạo mã phòng 4-5 số từ IP của Host"""
-        if not self.local_ip or self.local_ip == "127.0.0.1":
-            return "12345" # Mã đặc biệt nếu chơi trên cùng 1 máy (không có mạng LAN)
-            
-        parts = self.local_ip.split('.')
-        if len(parts) == 4:
-            # Lấy 2 cụm cuối của IP gộp lại thành 1 số
-            code = int(parts[2]) * 256 + int(parts[3])
-            return str(code).zfill(4) 
-        return "12345"
+        """Trả về IP của Host được mã hóa Base36"""
+        if not self.local_ip: return "127.0.0.1"
+        try:
+            parts = self.local_ip.split('.')
+            if len(parts) != 4: return self.local_ip
+            num = (int(parts[0]) << 24) + (int(parts[1]) << 16) + (int(parts[2]) << 8) + int(parts[3])
+            chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            if num == 0: return "0"
+            b36 = ""
+            while num > 0:
+                num, rem = divmod(num, 36)
+                b36 = chars[rem] + b36
+            return b36
+        except Exception:
+            return self.local_ip
 
     def decode_room_code(self, code_str):
-        """Dịch ngược mã phòng thành IP hoàn chỉnh"""
-        if code_str == "12345":
-            return "127.0.0.1" # Dịch ngược lại về localhost nếu dùng mã test
-            
+        """Giải mã chuỗi Base36 thành IP"""
+        if not code_str: return "127.0.0.1"
         try:
-            code = int(code_str)
-            parts = self.local_ip.split('.')
-            if len(parts) == 4:
-                prefix = f"{parts[0]}.{parts[1]}." 
-                p3 = code // 256
-                p4 = code % 256
-                return f"{prefix}{p3}.{p4}"
-        except ValueError:
-            pass
-        return "255.255.255.255" # Trả về IP lỗi nếu mã bậy bạ
+            if "." in code_str: return code_str
+            num = int(code_str, 36)
+            p1 = (num >> 24) & 255
+            p2 = (num >> 16) & 255
+            p3 = (num >> 8) & 255
+            p4 = num & 255
+            return f"{p1}.{p2}.{p3}.{p4}"
+        except Exception:
+            return "127.0.0.1"
 
     def close(self):
         """Đóng socket cũ và tạo socket mới, reset trạng thái"""
